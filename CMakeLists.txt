@@ -53,3 +53,9 @@ set_target_properties(horse-raft PROPERTIES CLEAN_DIRECT_OUTPUT 1)
 
 
 SET (LIBRARY_OUTPUT_PATH  ${CMAKE_CURRENT_SOURCE_DIR}/lib)
+# 安装horse-raft库和头文件
+install(
+	    TARGETS horse-raft
+        ARCHIVE DESTINATION lib
+        )
+install(DIRECTORY   ${CMAKE_CURRENT_SOURCE_DIR}/src/include DESTINATION ./ )
