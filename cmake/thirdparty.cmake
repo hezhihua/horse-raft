@@ -77,8 +77,8 @@ set(RPC_ROOT          ${CMAKE_BINARY_DIR}/thirdparty/horse-rpc)
 set(RPC_LIB_DIR       ${RPC_ROOT}/lib)
 set(RPC_INCLUDE_DIR   ${RPC_ROOT}/include)
  
-#set(RPC_URL           https://github.com/hezhihua/horse-rpc/archive/1.0.tar.gz)
-set(RPC_URL           https://github.com.cnpmjs.org/hezhihua/horse-rpc/archive/1.0.tar.gz)
+#set(RPC_URL           https://github.com/hezhihua/horse-rpc/archive/1.0.1.tar.gz)
+set(RPC_URL           https://github.com.cnpmjs.org/hezhihua/horse-rpc/archive/1.0.1.tar.gz)
 #set(RPC_CONFIGURE     cd ${RPC_ROOT}/src/horse-rpc && cmake -D CMAKE_INSTALL_PREFIX=${CMAKE_SOURCE_DIR}/third-party/horse-rpc .)
 set(RPC_CONFIGURE     cd ${RPC_ROOT}/src/horse-rpc && cmake -D CMAKE_INSTALL_PREFIX=${CMAKE_SOURCE_DIR}/third-party/horse-rpc .)
 set(RPC_MAKE          cd ${RPC_ROOT}/src/horse-rpc && make )
@@ -86,7 +86,7 @@ set(RPC_INSTALL       cd ${RPC_ROOT}/src/horse-rpc && make  install)
 
 ExternalProject_Add(horse-rpc
         URL                   ${RPC_URL}
-        DOWNLOAD_NAME         horse-rpc-1.0.tar.gz
+        DOWNLOAD_NAME         horse-rpc-1.0.1.tar.gz
         PREFIX                ${RPC_ROOT}
         CONFIGURE_COMMAND     ${RPC_CONFIGURE}
         BUILD_COMMAND         ${RPC_MAKE}
