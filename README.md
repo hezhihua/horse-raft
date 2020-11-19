@@ -5,7 +5,7 @@ An  C++ implementation of RAFT consensus algorithm based on horse-rpc
 | 软件	 | 要求 |
 | ----- | ----- |
 | gcc版本 | 最好4.8或以上 |
-| cmake版本 | 3.2及以上版本 |
+| cmake版本 | 3.10及以上版本 |
 | rocksdb版本 | 6.11.4及以上版本 |
 | yaml-cpp-yaml-cpp版本 | 0.6.3及以上版本 |
 | horse-rpc | 最新版本 |
