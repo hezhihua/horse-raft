@@ -1,0 +1,184 @@
+
+module horsedb
+{
+
+struct VoteInfoMeta 
+{
+    0 optional long term ;
+    1 optional string votedfor ;
+};
+struct ConfigurationMeta 
+{
+    0 optional vector<string> peers ;
+    1 optional vector<string> oldPeers;
+};
+
+
+
+enum EStatus {
+    E_OK = 0,
+    E_Timeout = 1,
+    E_NoSuchKey = 2,
+    E_NotLeader = 3,
+    E_Default = 4
+};
+
+enum CommandType {
+   CM_Noop = 0,
+   CM_Get = 1,
+   CM_Put = 2,
+   CM_Del = 3,
+   CM_Config=4
+};
+
+
+struct GetReq 
+{
+
+0 optional  string skey;
+1 optional  string sDB;
+};
+
+struct GetRes 
+{
+
+0 optional  string skey;
+1 optional  string sValue;
+2 optional  EStatus status;
+};
+
+struct PutReq 
+{
+
+0 optional  string sKey;
+1 optional  string sValue;
+2 optional  string sDB;
+};
+
+struct PutRes
+{
+
+0 optional  EStatus status;
+
+};
+
+struct DelReq 
+{
+
+0 optional  string sKey;
+1 optional  string sDB;
+};
+
+struct DelRes
+{
+
+0 optional  EStatus status;
+
+};
+
+struct  LogEntry {
+
+0 optional  CommandType cmdType;
+1 optional GetReq tGetReq;
+2 optional PutReq tPutReq;
+3 optional DelReq tDelReq;
+4 optional int term;
+5 optional int index;
+
+6 optional  vector<string> vPeer;//新的集群
+7 optional  vector<string> vOldPeer;//旧的集群
+};
+
+
+
+struct AppendEntriesReq {
+
+0 optional  string groupID; 
+1 optional  string peerID;//目标服务器地址
+2 optional  string serverID;//源服务器  地址
+3 optional  int prevLogIndex;
+4 optional  int prevLogTerm;
+5 optional  vector<LogEntry> logEntries;
+6 optional  int term;
+7 optional  int commitIndex;
+
+
+};
+
+struct AppendEntriesRes {
+
+0 optional  int term;
+1 optional  bool isSuccess;
+2 optional  int  lastLogIndex;
+3 optional  bool isReadOnly;
+
+};
+
+struct RequestVoteReq {
+
+0 optional  string groupID;
+1 optional  string peerID;//目标服务器地址
+2 optional  string serverID;//源服务器  地址
+3 optional  int term;
+4 optional  int lastLogIndex;
+5 optional  int lastLogTerm;
+};
+
+
+struct RequestVoteRes {
+
+0 optional  int term;
+1 optional  bool isVoteGranted;
+2 optional  string peerID;//目标服务器地址
+
+};
+
+struct SnapshotMeta {
+0 optional  int lastIncludedIndex;
+1 optional  int lastIncludedTerm;
+2 optional  vector<string> peers;
+3 optional  vector<string> oldPeers;
+
+};
+
+struct InstallSnapshotReq{
+0 optional  string groupID;
+1 optional  string peerID;//目标服务器地址
+2 optional  string serverID;//源服务器  地址
+3 optional  int term;
+4 optional  SnapshotMeta meta;
+5 optional  string uri ;
+};
+
+struct InstallSnapshotRes{
+0 optional  int term;
+1 optional  bool isSuccess;
+2 optional  string peerID;
+};
+
+//主要用于leader让位,如leader所在机器需要下线等情况
+//leader接收到管理命令->给peerID发送TimeoutNowReq
+struct TimeoutNowReq{
+0 optional  string groupID;
+1 optional  string peerID;//目标服务器地址  选peerID为主
+2 optional  string serverID;//源服务器  地址 即Leader地址
+3 optional  int term;
+};
+
+struct TimeoutNowRes{
+0 optional  int term;
+1 optional  bool isSuccess;
+2 optional  string peerID;
+};
+
+
+interface RaftDB
+{
+    int preVote(RequestVoteReq tReq,out RequestVoteRes tRes);
+    int requestVote(RequestVoteReq tReq,out RequestVoteRes tRes);
+    int appendEntries(AppendEntriesReq tReq,out AppendEntriesRes tRes);
+    int installSnapshot(InstallSnapshotReq tReq,out InstallSnapshotRes tRes);
+    int timeoutNow(TimeoutNowReq tReq,out TimeoutNowRes tRes);
+};
+
+}; 
