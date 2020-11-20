@@ -59,3 +59,4 @@ install(
         ARCHIVE DESTINATION lib
         )
 install(DIRECTORY   ${CMAKE_CURRENT_SOURCE_DIR}/src/include DESTINATION ./ )
+install(DIRECTORY   ${CMAKE_CURRENT_SOURCE_DIR}/third-party DESTINATION ./ )
