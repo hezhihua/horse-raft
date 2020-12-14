@@ -41,7 +41,19 @@ struct PeerId {
     PeerId(const EndpointInfo &addr, int idx) : _addr(addr), _idx(idx) {}
     PeerId(const std::string& str) 
     { 
-        int ret= parse(str);
+        string sResultStr;
+        vector<string> vIPInfo=TC_Common::sepstr<string> (str,":");//0.0.0.0 : 8085
+        if (vIPInfo.size()==2)
+        {
+            sResultStr="tcp -h "+vIPInfo[0]+" -p "+vIPInfo[1];
+        }
+        else
+        {
+            sResultStr=str;
+        }
+        
+        
+        int ret= parse(sResultStr);
         assert(ret==0) ;
     }
     PeerId(const PeerId& id) : _addr(id._addr), _idx(id._idx) {}

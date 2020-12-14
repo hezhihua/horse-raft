@@ -94,6 +94,12 @@ public:
     // finishes no matter it succes or fails.
     static int send_timeout_now_and_stop( Replicator*);
 
+    int64_t last_rpc_send_timestamp() ;
+    int stop_transfer_leadership();
+    int64_t get_next_index() ;
+    void _notify_on_caught_up(int error_code, bool before_destroy);
+    int stop();
+
 
     /**
      * 结束处理线程
@@ -138,7 +144,7 @@ protected:
 	void process(ReplicLogTask &task);
     
     int _prepare_entry(int offset, LogEntry &tLogEntry) ;
-private:
+public:
     enum StType {
         IDLE,
         BLOCKING,
@@ -284,6 +290,7 @@ public:
 
     // Check if a replicator is in readonly
     bool readonly(const PeerId& peer) const;
+
 
     const std::map<PeerId, Replicator*>& getAllReplicator(){return _rMap;}
     const map<string,RaftDBPrx>& getAllProxy(){return _mPrx;}

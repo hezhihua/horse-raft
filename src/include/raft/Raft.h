@@ -18,6 +18,7 @@
 #include <string>
 #include "raft/Configuration.h"
 #include "raft/RaftState.h"
+#include "raft/LogEntryContext.h"
 
 namespace horsedb {
 
@@ -83,7 +84,7 @@ struct Task {
     Task() :  _expected_term(-1) {}
 
     // The data applied to StateMachine
-    vector<LogEntry> _vLogEntry;
+    vector<LogEntryContext> _vLogEntry;
 
     // Reject this task if expected_term doesn't match the current term of
     // this Node if the value is not -1
@@ -131,15 +132,19 @@ public:
     // exactly what was passed to Node::apply which may stand for some 
     // continuation (such as respond to the client) after updating the 
     // StateMachine with the given task. Otherweise done() must be NULL.
-    ClientContext* done() const;
+    const ClientContext* done() const;
 
     // Return true this iterator is currently references to a valid task, false
     // otherwise, indicating that the iterator has reached the end of this
     // batch of tasks or some error has occurred
     bool valid() const;
 
+    const LogEntry& entry() const ;
 
-private:
+    
+
+
+public:
 friend class FSMCaller;
     Iterator(IteratorImpl* impl) : _impl(impl) {}
     ~Iterator() {};
@@ -182,6 +187,8 @@ public:
     // success return 0, fail return errno
     // Default: Save nothing and returns error.
     virtual void on_snapshot_save();
+
+    virtual void on_snapshot_save(const SnapshotMeta &meta);
 
     // user defined snapshot load function
     // get and load snapshot
@@ -503,7 +510,7 @@ class NodeImpl;
 class Node {
 public:
     Node(const GroupId& group_id, const PeerId& peer_id);
-    virtual ~Node();
+    virtual ~Node(){};
 
     // get node id
     NodeId node_id();

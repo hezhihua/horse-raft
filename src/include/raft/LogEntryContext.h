@@ -31,12 +31,11 @@ struct LogId {
 
 struct ClientContext{
 
-    ClientContext():_context(nullptr){}
-    ClientContext(const void *context):_context(const_cast<void *>(context)){init();}
-    virtual void init(){_context=nullptr;} ;
+    ClientContext(const void *contextdt):_contextdt(const_cast<void *>(contextdt)){init();}
+    virtual void init(){_contextdt=nullptr;} ;
     virtual void send(){} ;
 
-    void *_context;
+    void *_contextdt;
     CommandType _CommandType;
 };
 
@@ -45,11 +44,11 @@ struct ClientContext{
 struct LogEntryContext  {
 public:
     
-    LogEntryContext();
-    virtual ~LogEntryContext();
+    LogEntryContext(){}
+    virtual ~LogEntryContext(){};
 
     LogEntry _LogEntry;
-    ClientContext _ClientContext;
+    ClientContext* _ClientContext;
     
 };
 

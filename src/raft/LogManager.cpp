@@ -4,6 +4,25 @@
 namespace horsedb{
 
 
+LogManagerOptions::LogManagerOptions()
+    : log_storage(NULL)
+    , configuration_manager(NULL)
+    , fsm_caller(NULL)
+{}
+
+LogManager::LogManager()
+    : _log_storage(NULL)
+    , _config_manager(NULL)
+    , _stopped(false)
+    , _has_error(false)
+    , _next_wait_id(0)
+    , _first_log_index(0)
+    , _last_log_index(0)
+{
+    
+}
+
+
 int LogManager::init(const LogManagerOptions &options) 
 {
     std::unique_lock<std::mutex> lck(_mutex);
@@ -383,7 +402,54 @@ void LogManager::set_disk_id(const LogId& disk_id)
         return bExist;
     }
 
+    void LogManager::get_configuration(const int64_t index, ConfigurationEntry* conf) 
+    {
+        std::unique_lock<std::mutex> lck(_mutex);
+        return _config_manager->get(index, conf);
+    }
 
 
+    int64_t LogManager::last_log_index(bool is_flush) 
+    {
+        std::unique_lock<std::mutex> lck(_mutex);
+        if (!is_flush) 
+        {
+            return _last_log_index;
+        } 
+        else 
+        {
+            if (_last_log_index == _last_snapshot_id.index) {
+                return _last_log_index;
+            }
+            
+            return _disk_id.index;
+        }
+    }
 
+    LogId LogManager::last_log_id(bool is_flush) 
+    {
+        std::unique_lock<std::mutex> lck(_mutex);
+        if (!is_flush) 
+        {
+            if (_last_log_index >= _first_log_index) 
+            {
+                return LogId(_last_log_index, unsafe_get_term(_last_log_index));
+            }
+            return _last_snapshot_id;
+        } 
+        else 
+        {
+            if (_last_log_index == _last_snapshot_id.index) {
+                return _last_snapshot_id;
+            }
+            
+            return _disk_id;
+        }
+    }
+
+    int64_t LogManager::first_log_index() 
+    {
+        std::unique_lock<std::mutex> lck(_mutex);
+        return _first_log_index;
+    }
 }

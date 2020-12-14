@@ -86,6 +86,89 @@ namespace horsedb{
 
         return _rMap[peer];
     }
+    int64_t ReplicatorGroup::last_rpc_send_timestamp(const PeerId& peer) 
+    {
+        std::map<PeerId, Replicator *>::iterator iter = _rMap.find(peer);
+        if (iter == _rMap.end()) 
+        {
+            return 0;
+        }
+
+        return  iter->second->last_rpc_send_timestamp();
+    }
+    int ReplicatorGroup::stop_transfer_leadership(const PeerId& peer) 
+    {
+        std::map<PeerId, Replicator *>::const_iterator iter = _rMap.find(peer);
+        if (iter == _rMap.end()) 
+        {
+            return -1;
+        }
+
+        return iter->second->stop_transfer_leadership();
+    }
+
+    int ReplicatorGroup::reset_term(int64_t new_term) 
+    {
+        if (new_term <= _common_options.term) 
+        {
+            TLOGERROR_RAFT( "term cannot be decreased"<<endl);
+            return -1;
+        }
+        _common_options.term = new_term;
+        return 0;
+    }
+
+
+    int ReplicatorGroup::find_the_next_candidate(PeerId* peer_id, const ConfigurationEntry& conf) 
+    {
+        int64_t max_index =  0;
+        for (std::map<PeerId, Replicator *>::const_iterator iter = _rMap.begin();  iter != _rMap.end(); ++iter) 
+        {
+            if (!conf.contains(iter->first)) {
+                continue;
+            }
+            const int64_t next_index = iter->second->get_next_index();
+            if (next_index > max_index) 
+            {
+                max_index = next_index;
+                if (peer_id) 
+                {
+                    *peer_id = iter->first;
+                }
+            }
+        }
+        if (max_index == 0) {
+            return -1;
+        }
+        return 0;
+    }
+
+    int ReplicatorGroup::stop_all_and_find_the_next_candidate(Replicator* candidate, const ConfigurationEntry& conf) 
+    {
+        PeerId candidate_id;
+        const int rc = find_the_next_candidate(&candidate_id, conf);
+        if (rc == 0) 
+        {
+            TLOGINFO_RAFT( "Group " << _common_options.group_id
+                    << " Found " << candidate_id << " as the next candidate"<<endl);
+            candidate = _rMap[candidate_id];
+        } else {
+            TLOGINFO_RAFT( "Group " << _common_options.group_id
+                    << " Fail to find the next candidate"<<endl);
+        }
+        for (auto iter = _rMap.begin();  iter != _rMap.end(); ++iter) 
+        {
+            if (iter->second != candidate) 
+            {
+                iter->second->stop();
+            }
+        }
+        _rMap.clear();
+        return 0;
+    }
+
+
+
 
     Replicator::Replicator(size_t iQueueCap)
     : _terminate(false), _iQueueCap(iQueueCap)
@@ -106,6 +189,42 @@ namespace horsedb{
 
             notifyAll();
         
+    }
+    void Replicator::_notify_on_caught_up(int error_code, bool before_destroy) 
+    {
+    
+        TLOGINFO_RAFT( "_notify_on_caught_up "<<endl; );
+    }
+    int Replicator::stop() 
+    {
+    
+        _notify_on_caught_up(EPERM, true);
+        
+    }
+
+    int64_t Replicator::last_rpc_send_timestamp() 
+    {
+         return  _last_rpc_send_timestamp;
+
+    }
+    int Replicator::stop_transfer_leadership()
+    {
+
+        _timeout_now_index = 0;
+
+        return 0;
+    }
+
+    int64_t Replicator::get_next_index() 
+    {
+
+        int64_t next_index = 0;
+        if (_has_succeeded) 
+        {
+            next_index = _next_index - _flying_append_entries_size;
+        }
+
+        return next_index;
     }
 
     Replicator::~Replicator()

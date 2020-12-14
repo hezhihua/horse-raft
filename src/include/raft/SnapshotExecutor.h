@@ -84,7 +84,7 @@ public:
     //
     // NOTE: we can't interrupt the snapshot insalling which has finsihed
     // downloading and is reseting the State Machine.
-    void interrupt_downloading_snapshot(int64_t new_term);
+    void interrupt_downloading_snapshot(int64_t new_term){cout<<"interrupt_downloading_snapshot"<<endl;};
 
     // Return true if this is currently installing a snapshot, either
     // downloading or loading.

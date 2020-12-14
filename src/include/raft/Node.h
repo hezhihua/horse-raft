@@ -46,7 +46,7 @@ namespace horsedb {
 
 
 
-class  NodeImpl  {
+class  NodeImpl{
 
 
 friend class VoteBallotCtx;
@@ -226,7 +226,7 @@ private:
     void check_step_down(const int64_t term, const PeerId& server_id);
 
     // pre vote before elect_self
-    void pre_vote();
+    void pre_vote(std::unique_lock<std::mutex> &lck);
 
     // elect self to candidate
     void elect_self();
@@ -317,14 +317,14 @@ private:
             }
         }
         int32_t stage() const { return _stage; }
-        void reset();
+        void reset(){};
         bool is_busy() const { return _stage != STAGE_NONE; }
         // Start change configuration.
         void start(const Configuration& old_conf,  const Configuration& new_conf );
         // Invoked when this node becomes the leader, write a configuration
         // change log as the first log
         void flush(const Configuration& conf, const Configuration& old_conf);
-        void next_stage();
+        void next_stage(){};
         void on_caughtup(int64_t version, const PeerId& peer_id, bool succ);
     private:
         NodeImpl* _node;

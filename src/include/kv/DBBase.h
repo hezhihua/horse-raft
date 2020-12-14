@@ -42,6 +42,7 @@ namespace horsedb{
         bool GetFirstKV( string&key, string &value,const string& dbname);
         bool GetLastKV( string&key, string &value,const string& dbname);
         bool DeleteRange(const string& begin_key, const string& end_key,const string& dbname);
+        bool Delete(const string& key, const string& dbname);
 
         DB*  db(){return _db;}
 

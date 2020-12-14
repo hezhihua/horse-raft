@@ -244,4 +244,4 @@ void BallotBox::get_status(BallotBoxStatus* status) {
     }
 }
 
-}  //  namespace braft
+}  //  namespace raft

@@ -1,6 +1,7 @@
 #include "raft/FsmCaller.h"
 #include "logger/logger.h"
 #include "raft/Node.h"
+#include "raft/Snapshot.h"
 namespace horsedb{
 
 FSMCaller::FSMCaller(size_t iQueueCap)
@@ -77,7 +78,7 @@ void FSMCaller::run()
 		{
 			time2process();
 			TC_ThreadLock::Lock lock(*this);
-	        timedWait(300);		
+	        timedWait(7000);	//300	
 		}
 
     }
@@ -117,6 +118,10 @@ void FSMCaller::batchProcess()
                 break;
 
                 case   START_FOLLOWING:
+
+                break;
+                case   SNAPSHOT_SAVE:
+                do_snapshot_save();
 
                 break;
 
@@ -171,6 +176,51 @@ int FSMCaller::on_committed(int64_t committed_index)
     return 0;
 
 }
+int FSMCaller::on_leader_start(int64_t term, int64_t lease_epoch)
+{
+    ApplyTask task;
+    task.type=LEADER_START;
+    task.leader_start_context = new LeaderStartContext(term, lease_epoch) ;
+
+    push_back(task);
+
+    return 0;
+}
+
+int FSMCaller::on_leader_stop(const RaftState& status) 
+{
+    ApplyTask task;
+    task.type = LEADER_STOP;
+    push_back(task);
+    return 0;
+}
+
+int FSMCaller::on_start_following(const LeaderChangeContext& start_following_context) 
+{
+    ApplyTask task;
+    task.type = START_FOLLOWING;
+    LeaderChangeContext* context  = new LeaderChangeContext(start_following_context.leader_id(), start_following_context.term(), start_following_context.status());
+    task.leader_change_context = context;
+    push_back(task);
+ 
+    return 0;
+}
+
+int FSMCaller::on_stop_following(const LeaderChangeContext& stop_following_context) 
+{
+    ApplyTask task;
+    task.type = STOP_FOLLOWING;
+    LeaderChangeContext* context = new LeaderChangeContext(stop_following_context.leader_id(), 
+            stop_following_context.term(), stop_following_context.status());
+    task.leader_change_context = context;
+
+    push_back(task);
+   
+    return 0;
+}
+
+
+//leader和follwer都可能会执行此函数
 void FSMCaller::do_committed(int64_t committed_index)
 {
     int64_t last_applied_index = _last_applied_index.load(std::memory_order_relaxed);
@@ -228,10 +278,121 @@ void FSMCaller::do_committed(int64_t committed_index)
         iter.next();
     }
 
-    
-    
 
 }
+
+
+int FSMCaller::on_snapshot_save() 
+{
+    ApplyTask task;
+    task.type = SNAPSHOT_SAVE;
+
+    push_back(task);
+
+    return 0;
+}
+
+
+void FSMCaller::do_snapshot_save() 
+{
+
+    int64_t last_applied_index = _last_applied_index.load(std::memory_order_relaxed);
+
+    SnapshotMeta meta;
+    meta.lastIncludedIndex=last_applied_index;
+    meta.lastIncludedTerm=_last_applied_term;
+    ConfigurationEntry conf_entry;
+    _log_manager->get_configuration(last_applied_index, &conf_entry);
+    for (Configuration::const_iterator iter = conf_entry.conf.begin(); iter != conf_entry.conf.end(); ++iter) 
+    { 
+        meta.peers.push_back(iter->to_string()) ;
+    }
+    for (Configuration::const_iterator iter = conf_entry.old_conf.begin(); iter != conf_entry.old_conf.end(); ++iter) 
+    { 
+        meta.oldPeers.push_back(iter->to_string())  ;
+    }
+
+    // SnapshotWriter* writer = done->start(meta);
+    // if (!writer) {
+    //     done->status().set_error(EINVAL, "snapshot_storage create SnapshotWriter failed");
+    //     done->Run();
+    //     return;
+    // }
+
+    //业务处理,保存到文件
+    _fsm->on_snapshot_save(meta);
+    return;
+}
+
+
+
+int FSMCaller::on_snapshot_load() 
+{
+    ApplyTask task;
+    task.type = SNAPSHOT_LOAD;
+
+    push_back(task);
+
+    return 0;
+}
+
+
+void FSMCaller::do_snapshot_load() 
+{
+
+    SnapshotReader* reader = new LocalSnapshotReader();
+
+    SnapshotMeta meta;
+    int ret = reader->load_meta(&meta);
+    if (0 != ret) 
+    {
+        TLOGERROR_RAFT("SnapshotReader load_meta failed."<<endl);
+        
+        return;
+    }
+
+    LogId last_applied_id;
+    last_applied_id.index = _last_applied_index.load(std::memory_order_relaxed);
+    last_applied_id.term = _last_applied_term;
+    LogId snapshot_id;
+    snapshot_id.index = meta.lastIncludedIndex;
+    snapshot_id.term = meta.lastIncludedTerm;
+    if (last_applied_id > snapshot_id) //已经应用到状态机的id比快照的大,不再需要从快照load数据
+    {
+         TLOGINFO_RAFT("Loading a stale snapshot last_applied_index="<< last_applied_id.index <<" last_applied_term="<<last_applied_id.term
+                       <<" snapshot_index="<<snapshot_id.index<<" snapshot_term="<<snapshot_id.term<<endl)
+                                 
+        return ;
+    }
+
+    //从文件load数据到db
+    ret = _fsm->on_snapshot_load();
+    if (ret != 0) 
+    {
+        TLOGERROR_RAFT("StateMachine on_snapshot_load failed"<<endl);
+        
+        return;
+    }
+
+    if (meta.oldPeers.size() == 0) 
+    {
+        // Joint stage is not supposed to be noticeable by end users.
+        Configuration conf;
+        for (int i = 0; i < meta.peers.size(); ++i) 
+        {
+            conf.add_peer(meta.peers[i]);
+        }
+        _fsm->on_configuration_committed(conf, meta.lastIncludedIndex);
+    }
+
+    //更新最后应用的id
+    _last_applied_index.store(meta.lastIncludedIndex, std::memory_order_release);
+    _last_applied_term = meta.lastIncludedTerm;
+    
+}
+
+
+
 
 IteratorImpl::IteratorImpl(StateMachine* sm, LogManager* lm,
                           std::vector<ClientContext> &vContext, 
@@ -263,6 +424,28 @@ void IteratorImpl::next()
             _applying_index->store(_cur_index, std::memory_order_relaxed);
         }
     }
+}
+
+void Iterator::next() 
+{
+    if (valid()) 
+    {
+        _impl->next();
+    }
+}
+
+bool Iterator::valid() const 
+{
+    return _impl->is_good() && _impl->entry().cmdType != 0   && _impl->entry().cmdType != CM_Config;
+}
+
+const LogEntry& Iterator::entry() const 
+{ 
+    return _impl->entry(); 
+}
+const ClientContext* Iterator::done() const
+{
+    return _impl->done();
 }
 
 const ClientContext* IteratorImpl::done() const 

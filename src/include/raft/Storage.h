@@ -16,8 +16,9 @@
 
 #include "raft/Configuration.h"
 #include "kv/DBBase.h"
-
-
+#include "raft/RaftState.h"
+#include "raft/FileSystemAdaptor.h"
+#include "logger/logger.h"
 namespace horsedb {
 
     class LogStorage {
@@ -70,7 +71,122 @@ public:
     
 };
 
+// Snapshot 
+class Snapshot:public RaftState  {
+public:
+    Snapshot() {}
+    virtual ~Snapshot() {}
 
+    // Get the path of the Snapshot
+    virtual std::string get_path() = 0;
+
+    // List all the existing files in the Snapshot currently
+    virtual void list_files(std::vector<std::string> *files) = 0;
+
+    // Get the implementation-defined file_meta
+    // virtual int get_file_meta(const std::string& filename, 
+    //                           ::google::protobuf::Message* file_meta) {
+    //     (void)filename;
+    //     file_meta->Clear();
+    //     return 0;
+    // }
+};
+
+class SnapshotWriter : public Snapshot {
+public:
+    SnapshotWriter() {}
+    virtual ~SnapshotWriter() {}
+
+    // Save the meta information of the snapshot which is used by the raft
+    // framework.
+    virtual int save_meta(const SnapshotMeta& meta) = 0;
+
+    // Add a file to the snapshot.
+    // |file_meta| is an implmentation-defined protobuf message 
+    // All the implementation must handle the case that |file_meta| is NULL and
+    // no error can be raised.
+    // Note that whether the file will be created onto the backing storage is
+    // implementation-defined.
+    virtual int add_file(const std::string& filename) { 
+        return add_file(filename, LocalFileMeta());
+    }
+
+    virtual int add_file(const std::string& filename, 
+                         const LocalFileMeta& file_meta) = 0;
+
+    // Remove a file from the snapshot
+    // Note that whether the file will be removed from the backing storage is
+    // implementation-defined.
+    virtual int remove_file(const std::string& filename) = 0;
+};
+
+class SnapshotReader : public Snapshot {
+public:
+    SnapshotReader() {}
+    virtual ~SnapshotReader() {}
+
+    // Load meta from 
+    virtual int load_meta(SnapshotMeta* meta) = 0;
+
+    // Generate uri for other peers to copy this snapshot.
+    // Return an empty string if some error has occcured
+    virtual std::string generate_uri_for_copy() = 0;
+};
+
+class SnapshotStorage {
+public:
+    virtual ~SnapshotStorage() {}
+
+    virtual int set_filter_before_copy_remote() 
+    {
+        
+        TLOGERROR_RAFT("doesn't support filter before copy remote"<<endl);
+        return -1;
+    }
+
+    virtual int set_file_system_adaptor(FileSystemAdaptor* fs) 
+    {
+        (void)fs;
+        
+        TLOGERROR_RAFT("doesn't support file system adaptor"<<endl);
+        return -1;
+    }
+
+    // virtual int set_snapshot_throttle(SnapshotThrottle* st) {
+    //     (void)st;
+        
+    //                   TLOGERROR_RAFT( " doesn't support snapshot throttle"<<endl);
+    //     return -1;
+    // }
+
+    // Initialize
+    virtual int init() = 0;
+
+    // create new snapshot writer
+    virtual SnapshotWriter* create() = 0;
+
+    // close snapshot writer
+    virtual int close(SnapshotWriter* writer) = 0;
+
+    // get lastest snapshot reader
+    virtual SnapshotReader* open() = 0;
+
+    // close snapshot reader
+    virtual int close(SnapshotReader* reader) = 0;
+
+    // Copy snapshot from uri and open it as a SnapshotReader
+    virtual SnapshotReader* copy_from(const std::string& uri)  = 0;
+
+
+    // Create an instance of this kind of SnapshotStorage with the parameters encoded 
+    // in |uri|
+    // Return the address referenced to the instance on success, NULL otherwise.
+
+    static SnapshotStorage* create(const std::string& uri);
+    
+
+    static int destroy(const std::string& uri);
+};
 
 
 }

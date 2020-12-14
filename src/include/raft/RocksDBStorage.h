@@ -31,9 +31,11 @@ public:
 
     // first log index in log
     virtual int64_t first_log_index();
+    virtual int64_t first_log_index_from_db();
 
     // last log index in log
     virtual int64_t last_log_index();
+    virtual int64_t last_log_index_from_db();
 
     // get logentry by index
     virtual LogEntry* get_entry(const int64_t index) ;
@@ -80,6 +82,10 @@ public:
      string _sVoteMetaKey;
 
     ConfigurationManager* _config_manager;
+
+    std::atomic<int64_t> _first_log_index;
+    std::atomic<int64_t> _last_log_index;
+    std::mutex _mutex;
 
 };
 

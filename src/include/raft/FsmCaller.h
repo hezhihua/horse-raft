@@ -117,7 +117,7 @@ struct FSMCallerOptions {
 
 
 /**
- * 处理已经 commit 的log,应用到状态机.只有leader才能start此线程
+ * 处理已经 commit 的log,应用到状态机.
  */
 class  FSMCaller : public TC_Thread, public TC_ThreadLock{
 public:
@@ -185,8 +185,9 @@ public:
     int init(const FSMCallerOptions& options);
     int shutdown();
      int on_committed(int64_t committed_index);
-     //int on_snapshot_load(LoadSnapshotClosure* done);
-     //int on_snapshot_save(SaveSnapshotClosure* done);
+     int on_snapshot_load();
+     int on_snapshot_save();
+
     int on_leader_stop(const RaftState& status);
     int on_leader_start(int64_t term, int64_t lease_epoch);
     int on_start_following(const LeaderChangeContext& start_following_context);

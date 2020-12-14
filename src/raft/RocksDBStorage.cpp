@@ -30,14 +30,31 @@ namespace horsedb {
         _sVoteMetaKey.append(sBigGroupID);
         _sVoteMetaKey.append(1,0x04);
 
+        //todo 设置选举信息
+
+        if (first_log_index_from_db()<0)
+        {
+            _first_log_index.store(1);
+            _last_log_index.store(0);
+        }
+        
+
         return 0;
 
     }
 
 
-
-
     int64_t RocksDBStorage::first_log_index()
+    {
+        return _first_log_index.load(std::memory_order_acquire);;
+    }
+    int64_t RocksDBStorage::last_log_index()
+    {
+        return _last_log_index.load(std::memory_order_acquire);;
+    }
+
+
+    int64_t RocksDBStorage::first_log_index_from_db()
     {
         try
         {
@@ -52,12 +69,14 @@ namespace horsedb {
                 _is.setBuffer(valueBuff);
                 tLogEntry.readFrom(_is);
 
+                _first_log_index.store(tLogEntry.index);
+
                 return tLogEntry.index;
             }
         }
         catch(const std::exception& e)
         {
-            std::cerr << e.what() << '\n';
+            std::cerr << "first_log_index_from_db:"<<e.what() << '\n';
         }
         
         
@@ -66,7 +85,7 @@ namespace horsedb {
 
     }
 
-    int64_t RocksDBStorage::last_log_index()
+    int64_t RocksDBStorage::last_log_index_from_db()
     {
         try
         {
@@ -80,6 +99,7 @@ namespace horsedb {
                 horsedb::TarsInputStream<horsedb::BufferReader> _is;
                 _is.setBuffer(valueBuff);
                 tLogEntry.readFrom(_is);
+                _last_log_index.store(tLogEntry.index);
 
                 return tLogEntry.index;
             }
@@ -145,6 +165,7 @@ namespace horsedb {
     {
         std::vector<LogEntry> entries;
         entries.push_back(entry);
+        _last_log_index.fetch_add(1, std::memory_order_release);
         return append_entries(entries);
 
     }
@@ -193,6 +214,8 @@ namespace horsedb {
             string value(_os.getBuffer(), _os.getLength());  
 
             _dbbase->Put2WriteBatch(updates,key, value,_sDBName);
+
+            _last_log_index.fetch_add(1, std::memory_order_release);
         }
 
 

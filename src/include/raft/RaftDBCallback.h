@@ -20,9 +20,12 @@ namespace horsedb{
 
 class RaftDBCallback:public RaftDBPrxCallback
 {
-
+    public:
+    virtual ~RaftDBCallback(){}
+    virtual void callback_appendEntries(horsedb::Int32 ret,  const horsedb::AppendEntriesRes& tRes){}
     virtual void callback_appendEntries(horsedb::Int32 ret, const horsedb::AppendEntriesReq &tReq, const horsedb::AppendEntriesRes& tRes);    
     virtual void callback_appendEntries_exception(horsedb::Int32 ret,const horsedb::AppendEntriesReq &tReq);
+    virtual void callback_appendEntries_exception(horsedb::Int32 ret);
 
     virtual void callback_requestVote(horsedb::Int32 ret,  const horsedb::RequestVoteRes& tRes);   
     virtual void callback_requestVote_exception(horsedb::Int32 ret);

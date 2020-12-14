@@ -21,6 +21,10 @@ include(cmake/thirdparty.cmake)
 	  src/raft/AsyncLogThread.cpp
 	  src/raft/NodeManager.cpp
 	  src/raft/Node.cpp
+	  src/raft/Snapshot.cpp
+	  src/raft/FileSystemAdaptor.cpp
+	  src/raft/Raft.cpp
+	  src/raft/RaftDBCallback.cpp
 
       )   
 

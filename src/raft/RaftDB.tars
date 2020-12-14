@@ -28,7 +28,8 @@ enum CommandType {
    CM_Get = 1,
    CM_Put = 2,
    CM_Del = 3,
-   CM_Config=4
+   CM_Create = 4,
+   CM_Config=5
 };
 
 
@@ -154,6 +155,19 @@ struct InstallSnapshotRes{
 0 optional  int term;
 1 optional  bool isSuccess;
 2 optional  string peerID;
+};
+
+
+struct LocalFileMeta{
+    0 optional string name ;
+    1 optional string checksum ;
+
+};
+
+struct LocalSnapshotMeta{
+    0 optional  SnapshotMeta meta;
+    1 optional  vector<LocalFileMeta> vFiles;
+
 };
 
 //主要用于leader让位,如leader所在机器需要下线等情况

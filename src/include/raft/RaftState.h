@@ -61,25 +61,20 @@ namespace horsedb {
 
 
 struct RaftState{
-
+    //virtual ~RaftState(){}
     RaftState():_state(EUNKOWN),_msg("unkown"){}
     RaftState(int raftError,const string &msg):_state(raftError),_msg(msg){}
     bool ok(){return _state==0;}
     const string &msg() const {return _msg;}
     const int &code() const {return _state;}
+    void set_error(int raftError,const string &msg) { _state=raftError;_msg=msg;}
     
 
     int _state;
     string _msg;
 
 };
-inline std::ostream& operator<<(std::ostream& os, const RaftState& tRaftState) 
-{
-        os << "_state=" << tRaftState.code()
-        << ", _msg=" << tRaftState.msg()
-        << "}";
-        return os;
- }
+std::ostream& operator<<(std::ostream& os, const RaftState& tRaftState) ;
 
 
 }

@@ -22,6 +22,11 @@ namespace horsedb {
             cout<<"cfname="<<cf<<endl;
             column_families.push_back(ColumnFamilyDescriptor(cf, ColumnFamilyOptions(_options)));
         }
+        if (column_families.empty())
+        {
+            column_families.push_back(ColumnFamilyDescriptor(kDefaultColumnFamilyName, ColumnFamilyOptions(_options)));
+        }
+        
         
     
         Status s = DB::Open(_options, dbPath,column_families,&handles, &_db);
@@ -99,7 +104,7 @@ namespace horsedb {
         bool bDBExist= _mhandles.find(dbname)!=_mhandles.end();
         if (!bDBExist)
         {
-            cout<<"DB not Exist,dbname"<<dbname<<endl;
+            cout<<"DB not Exist,dbname="<<dbname<<endl;
         }
         
         return bDBExist;
@@ -202,11 +207,15 @@ namespace horsedb {
         }
 
         iter->SeekToFirst();
-        key.assign(iter->key().data(),iter->key().size());
-        value.assign(iter->value().data(),iter->value().size());
+        if (iter->Valid())
+        {
+            key.assign(iter->key().data(),iter->key().size());
+            value.assign(iter->value().data(),iter->value().size());
+            return true;
+        }
 
 
-        return true;
+        return false;
         
     }
     bool DBBase::GetLastKV( string&key, string &value,const string& dbname)
@@ -226,17 +235,26 @@ namespace horsedb {
         }
 
         iter->SeekToLast();
-        key.assign(iter->key().data(),iter->key().size());
-        value.assign(iter->value().data(),iter->value().size());
+        if (iter->Valid())
+        {
+            key.assign(iter->key().data(),iter->key().size());
+            value.assign(iter->value().data(),iter->value().size());
+            return true;
+        }
+        
 
-
-        return true;
+        return false;
         
     }
 
     bool DBBase::DeleteRange(const string& begin_key, const string& end_key,const string& dbname)
     {
         Status st = _db->DeleteRange(_WriteOptions,_mhandles[dbname],begin_key,end_key);
+        return st.ok();
+    }
+    bool DBBase::Delete(const string& key, const string& dbname)
+    {
+        Status st = _db->Delete(_WriteOptions,_mhandles[dbname],key);
         return st.ok();
     }
 

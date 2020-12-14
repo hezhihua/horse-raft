@@ -138,7 +138,7 @@ void AsyncLogThread::process(LogEntryContext &log)
 	
 		_batchLog.push_back(log._LogEntry);
 		//一次请求需要一次投票
-		_node->_ballot_box->append_pending_task(_node->_conf.conf,_node->_conf.old_conf.empty() ? NULL : &_node->_conf.old_conf,log._ClientContext);
+		_node->_ballot_box->append_pending_task(_node->_conf.conf,_node->_conf.old_conf.empty() ? NULL : &_node->_conf.old_conf,*log._ClientContext);
 
 		if (_batchLog.size()==20)
 		{
@@ -158,6 +158,7 @@ void AsyncLogThread::process(LogEntryContext &log)
 
 void AsyncLogThread::time2process()
 {
+	cout<<"[AsyncLogThread] time2process." << endl;
 	TLOGINFO_RAFT("[AsyncLogThread] time2process." << endl);
 
 	try

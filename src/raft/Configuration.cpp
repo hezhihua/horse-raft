@@ -107,7 +107,8 @@ void ConfigurationManager::get(int64_t last_included_index,ConfigurationEntry* c
             break;
         }
     }
-    if (it == _configurations.begin()) {
+    if (it == _configurations.begin()) 
+    {
         *conf = _snapshot;
         return;
     }

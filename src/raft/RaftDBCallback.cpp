@@ -4,6 +4,7 @@
 #include "raft/Replicator.h"
 #include "raft/RaftState.h"
 #include "logger/logger.h"
+#include "raft/Node.h"
 namespace horsedb {
 
 
@@ -14,19 +15,19 @@ namespace horsedb {
         {
             do
             {
-                Replicator *replicator=ReplicatorGroup::getInstance()->getReplicator(PeerId(tReq.peerID))    ;
+                Replicator *replicator=ReplicatorGroup::getInstance()->get_replicator(PeerId(tReq.peerID))    ;
                 if (replicator==NULL)
                 {
                     break;
                 }
 
-               TLOGWARN_RAFT(  "node " << r->_options.group_id << ":" << r->_options.server_id 
+               TLOGWARN_RAFT(  "node " << replicator->_options.group_id << ":" << replicator->_options.server_id 
                 << " received AppendEntriesResponse from "
-                << r->_options.peer_id << " prev_log_index " << tReq.preLogIndex
+                << replicator->_options.peer_id << " prev_log_index " << tReq.prevLogIndex
                 << " prev_log_term " << tReq.prevLogTerm << " count " << tReq.logEntries.size() <<endl) ;
 
-                bool valid_rpc = false;
-                int64_t rpc_first_index = tReq.preLogIndex + 1;
+                //bool valid_rpc = false;
+                int64_t rpc_first_index = tReq.prevLogIndex + 1;
                 int64_t min_flying_index = replicator->_min_flying_index();
                 if (min_flying_index<=0)
                 {
@@ -35,7 +36,7 @@ namespace horsedb {
 
                 replicator->_update_last_rpc_send_timestamp(TNOWMS);
 
-                for (std::deque<FlyingAppendEntriesRpc>::iterator rpc_it = replicator->_append_entries_in_fly.begin(); rpc_it != replicator->_append_entries_in_fly.end(); ++rpc_it) 
+                for (auto rpc_it = replicator->_append_entries_in_fly.begin(); rpc_it != replicator->_append_entries_in_fly.end(); ++rpc_it) 
                 {
                     if (rpc_it->log_index > rpc_first_index) 
                     {
@@ -45,7 +46,7 @@ namespace horsedb {
                 }
 
                 //todo timeout
-                if ()
+                if (true)
                 {
                     /* timeout do in callback_AppendEntries_exception*/
                 }
@@ -61,8 +62,8 @@ namespace horsedb {
                         NodeImpl *node_impl = replicator->_options.node;
                         
                         //r->_notify_on_caught_up(EPERM, true);
-                        RaftState status(EHIGHERTERMRESPONSE, "Leader receives higher term  from peer:"+ r->_options.peer_id.to_string());
-                        replicator->_destroy();
+                        RaftState status(EHIGHERTERMRESPONSE, "Leader receives higher term  from peer:"+ replicator->_options.peer_id.to_string());
+                        //replicator->_destroy();
                         node_impl->increase_term_to(tRes.term, status);//降为follwer
                         
                         return;
@@ -71,7 +72,7 @@ namespace horsedb {
                     //
                     TLOGWARN_RAFT( " fail, find next_index remote last_log_index " << tRes.lastLogIndex
                                 << " local next_index " << replicator->_next_index 
-                                << " rpc prev_log_index " << tReq.preLogIndex<<endl );
+                                << " rpc prev_log_index " << tReq.prevLogIndex<<endl );
                     
                     
                     // prev_log_index and prev_log_term doesn't match
@@ -182,9 +183,50 @@ namespace horsedb {
 
     }
 
-    void callback_AppendEntries_exception(horsedb::Int32 ret)
+    void RaftDBCallback::callback_appendEntries_exception(horsedb::Int32 ret)
     {
         //may be timeout
+
+    }
+
+    void RaftDBCallback::callback_appendEntries_exception(horsedb::Int32 ret,const horsedb::AppendEntriesReq &tReq)
+    {
+
+    }
+
+    void RaftDBCallback::callback_requestVote(horsedb::Int32 ret,  const horsedb::RequestVoteRes& tRes)
+    {
+
+    }
+    void RaftDBCallback::callback_requestVote_exception(horsedb::Int32 ret)
+    {
+
+    }
+
+    void RaftDBCallback::callback_preVote(horsedb::Int32 ret,  const horsedb::RequestVoteRes& tRes)
+    {
+
+    }
+    void RaftDBCallback::callback_preVote_exception(horsedb::Int32 ret)
+    {
+
+    }
+
+    void RaftDBCallback::callback_installSnapshot(horsedb::Int32 ret,  const horsedb::InstallSnapshotRes& tRes)
+    {
+
+    }
+    void RaftDBCallback::callback_installSnapshot_exception(horsedb::Int32 ret)
+    {
+
+    }
+
+    void RaftDBCallback::callback_timeoutNow(horsedb::Int32 ret,  const horsedb::TimeoutNowRes& tRes)
+    {
+
+    }
+    void RaftDBCallback::callback_timeoutNow_exception(horsedb::Int32 ret)
+    {
 
     }
 

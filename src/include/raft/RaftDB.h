@@ -15,6 +15,7 @@ using namespace std;
 #include "client/Servant.h"
 
 
+
 namespace horsedb
 {
     enum EStatus
@@ -54,7 +55,8 @@ namespace horsedb
         CM_Get = 1,
         CM_Put = 2,
         CM_Del = 3,
-        CM_Config = 4,
+        CM_Create = 4,
+        CM_Config = 5,
     };
     inline string etos(const CommandType & e)
     {
@@ -64,6 +66,7 @@ namespace horsedb
             case CM_Get: return "CM_Get";
             case CM_Put: return "CM_Put";
             case CM_Del: return "CM_Del";
+            case CM_Create: return "CM_Create";
             case CM_Config: return "CM_Config";
             default: return "";
         }
@@ -74,6 +77,7 @@ namespace horsedb
         if(s == "CM_Get")  { e=CM_Get; return 0;}
         if(s == "CM_Put")  { e=CM_Put; return 0;}
         if(s == "CM_Del")  { e=CM_Del; return 0;}
+        if(s == "CM_Create")  { e=CM_Create; return 0;}
         if(s == "CM_Config")  { e=CM_Config; return 0;}
 
         return -1;
@@ -1338,6 +1342,133 @@ namespace horsedb
         return !(l == r);
     }
 
+    struct LocalFileMeta : public horsedb::TarsStructBase
+    {
+    public:
+        static string className()
+        {
+            return "horsedb.LocalFileMeta";
+        }
+        static string MD5()
+        {
+            return "325d87d477a8cf7a6468ed6bb39da964";
+        }
+        LocalFileMeta()
+        {
+            resetDefautlt();
+        }
+        void resetDefautlt()
+        {
+            name = "";
+            checksum = "";
+        }
+        template<typename WriterT>
+        void writeTo(horsedb::TarsOutputStream<WriterT>& _os) const
+        {
+            if (name != "")
+            {
+                _os.write(name, 0);
+            }
+            if (checksum != "")
+            {
+                _os.write(checksum, 1);
+            }
+        }
+        template<typename ReaderT>
+        void readFrom(horsedb::TarsInputStream<ReaderT>& _is)
+        {
+            resetDefautlt();
+            _is.read(name, 0, false);
+            _is.read(checksum, 1, false);
+        }
+        ostream& display(ostream& _os, int _level=0) const
+        {
+            horsedb::TarsDisplayer _ds(_os, _level);
+            _ds.display(name,"name");
+            _ds.display(checksum,"checksum");
+            return _os;
+        }
+        ostream& displaySimple(ostream& _os, int _level=0) const
+        {
+            horsedb::TarsDisplayer _ds(_os, _level);
+            _ds.displaySimple(name, true);
+            _ds.displaySimple(checksum, false);
+            return _os;
+        }
+    public:
+        std::string name;
+        std::string checksum;
+    };
+    inline bool operator==(const LocalFileMeta&l, const LocalFileMeta&r)
+    {
+        return l.name == r.name && l.checksum == r.checksum;
+    }
+    inline bool operator!=(const LocalFileMeta&l, const LocalFileMeta&r)
+    {
+        return !(l == r);
+    }
+
+    struct LocalSnapshotMeta : public horsedb::TarsStructBase
+    {
+    public:
+        static string className()
+        {
+            return "horsedb.LocalSnapshotMeta";
+        }
+        static string MD5()
+        {
+            return "a5c9f7c5785fe7c34bc1bb10b895c14f";
+        }
+        LocalSnapshotMeta()
+        {
+            resetDefautlt();
+        }
+        void resetDefautlt()
+        {
+        }
+        template<typename WriterT>
+        void writeTo(horsedb::TarsOutputStream<WriterT>& _os) const
+        {
+            _os.write(meta, 0);
+            if (vFiles.size() > 0)
+            {
+                _os.write(vFiles, 1);
+            }
+        }
+        template<typename ReaderT>
+        void readFrom(horsedb::TarsInputStream<ReaderT>& _is)
+        {
+            resetDefautlt();
+            _is.read(meta, 0, false);
+            _is.read(vFiles, 1, false);
+        }
+        ostream& display(ostream& _os, int _level=0) const
+        {
+            horsedb::TarsDisplayer _ds(_os, _level);
+            _ds.display(meta,"meta");
+            _ds.display(vFiles,"vFiles");
+            return _os;
+        }
+        ostream& displaySimple(ostream& _os, int _level=0) const
+        {
+            horsedb::TarsDisplayer _ds(_os, _level);
+            _ds.displaySimple(meta, true);
+            _ds.displaySimple(vFiles, false);
+            return _os;
+        }
+    public:
+        horsedb::SnapshotMeta meta;
+        vector<horsedb::LocalFileMeta> vFiles;
+    };
+    inline bool operator==(const LocalSnapshotMeta&l, const LocalSnapshotMeta&r)
+    {
+        return l.meta == r.meta && l.vFiles == r.vFiles;
+    }
+    inline bool operator!=(const LocalSnapshotMeta&l, const LocalSnapshotMeta&r)
+    {
+        return !(l == r);
+    }
+
     struct TimeoutNowReq : public horsedb::TarsStructBase
     {
     public:
@@ -2138,7 +2269,7 @@ namespace horsedb
     typedef std::shared_ptr<RaftDBProxy> RaftDBPrx;
 
     /* servant for server */
-    class RaftDB :public horsedb::Servant
+    class RaftDB : public horsedb::Servant
     {
     public:
         virtual ~RaftDB(){}

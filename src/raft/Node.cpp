@@ -9,6 +9,71 @@
 namespace horsedb {
 
 
+    Node::Node(const GroupId& group_id, const PeerId& peer_id) 
+    {
+        _impl = new NodeImpl(group_id, peer_id);
+    }
+    int Node::init(const NodeOptions& options) 
+    {
+        return _impl->init(options);
+    }
+    bool Node::is_leader() 
+    {
+        return _impl->is_leader();
+    }
+    void Node::apply(const Task& task)
+    {
+        return _impl->apply(task);
+
+    }
+
+    NodeImpl::NodeImpl(const GroupId& group_id, const PeerId& peer_id): _state(STATE_UNINITIALIZED)
+    , _current_term(0)
+    , _group_id(group_id)
+    , _server_id(peer_id)
+    , _conf_ctx(this)
+    , _log_storage(NULL)
+    //, _meta_storage(NULL)
+    //, _closure_queue(NULL)
+    , _config_manager(NULL)
+    , _log_manager(NULL)
+    , _fsm_caller(NULL)
+    , _ballot_box(NULL)
+    , _snapshot_executor(NULL)
+    , _stop_transfer_arg(NULL)
+    , _vote_triggered(false)
+    , _waking_candidate(0)
+    //, _append_entries_cache(NULL)
+    , _append_entries_cache_version(0)
+    , _node_readonly(false)
+    , _majority_nodes_readonly(false)
+    {
+        
+    }
+    NodeImpl::NodeImpl(): _state(STATE_UNINITIALIZED)
+    , _current_term(0)
+    , _group_id()
+    , _server_id()
+    , _conf_ctx(this)
+    , _log_storage(NULL)
+    //, _meta_storage(NULL)
+    //, _closure_queue(NULL)
+    , _config_manager(NULL)
+    , _log_manager(NULL)
+    , _fsm_caller(NULL)
+    , _ballot_box(NULL)
+    , _snapshot_executor(NULL)
+    , _stop_transfer_arg(NULL)
+    , _vote_triggered(false)
+    , _waking_candidate(0)
+    //, _append_entries_cache(NULL)
+    , _append_entries_cache_version(0)
+    , _node_readonly(false)
+    , _majority_nodes_readonly(false)
+    {
+
+    }
+
     void NodeImpl::VoteBallotCtx::reset(NodeImpl* node) 
     {
         stop_grant_self_timer(node);
@@ -40,7 +105,7 @@ namespace horsedb {
 
         delete grant_arg;
 
-        std::unique_lock<std::mutex> lck(node->_mutex);
+        std::unique_lock<std::mutex> lck(node->_mutex);//unlock
         if (!is_active_state(node->_state) ||vote_ctx->version() != vote_ctx_version) 
         {
             
@@ -51,7 +116,9 @@ namespace horsedb {
         return NULL;
     }
 
-
+    NodeImpl::~NodeImpl() {
+        
+    }
     void NodeImpl::on_transfer_timeout(void* arg) 
     {
         StopTransferArg* a = (StopTransferArg*)arg;
@@ -191,7 +258,7 @@ namespace horsedb {
             TLOGWARN_RAFT( "node " << node->node_id()<< " term " << node->_current_term  << " steps down when reaching vote timeout: fail to get quorum vote-granted");
             RaftState status(ERAFTTIMEDOUT, "Fail to get quorum vote-granted");
             node->step_down(node->_current_term, false, status);
-            node->pre_vote();
+            node->pre_vote(lck);
         } 
         else 
         {
@@ -246,10 +313,9 @@ namespace horsedb {
 
         if (!NodeManager::getInstance()->server_exists(_server_id._addr)) 
         {
-            TLOGERROR_RAFT( "Group " << _group_id
-                    << " No RPC Server attached to " << _server_id._addr
-                    << ", did you forget to call braft::add_service()?"<<endl );
-            return -1;
+            TLOGINFO_RAFT( "Group " << _group_id
+                    << " No RPC Server attached to " << _server_id._addr<<endl );
+            
         }
 
         
@@ -361,6 +427,7 @@ namespace horsedb {
         {
             // The group contains only this server which must be the LEADER, trigger
             // the timer immediately.
+            TLOGINFO_RAFT("The group contains only this server which must be the LEADER, trigger the timer immediately." <<endl)
             elect_self();
         }
         return 0;
@@ -416,6 +483,7 @@ namespace horsedb {
     }
     int NodeImpl::init_meta() 
     {
+        //todo init VoteInfoMeta info in _log_storage->init  ?
         // get term and votedfor
         int iRet = _log_storage->get_term_and_votedfor(&_current_term, &_voted_id, _v_group_id);
         if (iRet!=0) 
@@ -523,6 +591,7 @@ namespace horsedb {
         _current_term++;//任期加1
         _voted_id = _server_id; //选自己
 
+        cout<<"node " << _group_id << ":" << _server_id<< " term " << _current_term << " start vote_timer"<<endl;
         TLOGINFO_RAFT( "node " << _group_id << ":" << _server_id<< " term " << _current_term << " start vote_timer"<<endl);
 
         _vote_timer.startTimer();//起一个定时线程如果时间到了但未选到自己，继续执行elect_self
@@ -613,7 +682,7 @@ namespace horsedb {
             TLOGERROR_RAFT("_state != STATE_CANDIDATE" );
             return;
         }
-        TLOGINFO_RAFT("node " << _group_id << ":" << _server_id << " term " << _current_term<< " become leader of group " << _conf.conf<< " " << _conf.old_conf);
+        TLOGINFO_RAFT("node " << _group_id << " :" << _server_id << " term " << _current_term<< " become leader of group " << _conf.conf<< " " << _conf.old_conf);
         // cancel candidate vote timer
         _vote_timer.stopTimer();
         _vote_ctx.reset(this);
@@ -661,10 +730,91 @@ namespace horsedb {
         _stepdown_timer.postRepeated(1000,1000,NodeImpl::check_dead_nodes,this);
 
         _pAsyncLogThread =new AsyncLogThread(10000);
-        _pFsmCaller=new FSMCaller(10000);
+
 
         
     }
+
+    void NodeImpl::apply(const Task& task)
+    {
+        for (size_t i = 0; i < task._vLogEntry.size(); i++)
+        {
+            _pAsyncLogThread->push_back(*const_cast<LogEntryContext*>(&task._vLogEntry[i]));
+        }
+
+    }
+
+    void NodeImpl::on_configuration_change_done(int64_t term) 
+    {
+        std::unique_lock<std::mutex> lck(_mutex);
+        if (_state > STATE_TRANSFERRING || term != _current_term) 
+        {
+            TLOGINFO_RAFT( "node " << node_id()
+                        << " process on_configuration_change_done "
+                        << " at term=" << term
+                        << " while state=" << state2str(_state)
+                        << " and current_term=" << _current_term<<endl);
+            // Callback from older version
+            return;
+        }
+        _conf_ctx.next_stage();
+
+    }
+    void NodeImpl::leader_lease_start(int64_t lease_epoch) 
+    {
+        std::unique_lock<std::mutex> lck(_mutex);
+        if (_state == STATE_LEADER) 
+        {
+            _leader_lease.on_lease_start(lease_epoch, last_leader_active_timestamp());
+        }
+    }
+    int64_t NodeImpl::last_leader_active_timestamp() 
+    {
+        int64_t timestamp = last_leader_active_timestamp(_conf.conf);
+        if (!_conf.old_conf.empty()) {
+            timestamp = std::min(timestamp, last_leader_active_timestamp(_conf.old_conf));
+        }
+        return timestamp;
+    }
+
+    struct LastActiveTimestampCompare 
+    {
+        bool operator()(const int64_t& a, const int64_t& b) {
+            return a > b;
+        }
+    };
+    int64_t NodeImpl::last_leader_active_timestamp(const Configuration& conf) 
+    {
+        std::vector<PeerId> peers;
+        conf.list_peers(&peers);
+        std::vector<int64_t> last_rpc_send_timestamps;
+        LastActiveTimestampCompare compare;
+        for (size_t i = 0; i < peers.size(); i++) 
+        {
+            if (peers[i] == _server_id) 
+            {
+                continue;
+            }
+
+            int64_t timestamp = _replicator_group.last_rpc_send_timestamp(peers[i]);
+            last_rpc_send_timestamps.push_back(timestamp);
+            std::push_heap(last_rpc_send_timestamps.begin(), last_rpc_send_timestamps.end(), compare);
+            if (last_rpc_send_timestamps.size() > peers.size() / 2) 
+            {
+                std::pop_heap(last_rpc_send_timestamps.begin(), last_rpc_send_timestamps.end(), compare);
+                last_rpc_send_timestamps.pop_back();
+            }
+        }
+        // Only one peer in the group.
+        if (last_rpc_send_timestamps.empty()) 
+        {
+            return TNOWMS;
+        }
+        std::pop_heap(last_rpc_send_timestamps.begin(), last_rpc_send_timestamps.end(), compare);
+        return last_rpc_send_timestamps.back();
+    }
+
+
 
     void NodeImpl::check_dead_nodes(NodeImpl *node) 
     {
@@ -768,7 +918,7 @@ namespace horsedb {
     }
 
 
-    void NodeImpl::pre_vote() 
+    void NodeImpl::pre_vote(std::unique_lock<std::mutex> &lck) 
     {
         TLOGINFO_RAFT( "node " << _group_id << ":" << _server_id << " term " << _current_term << " start pre_vote"<<endl);
         if (_snapshot_executor && _snapshot_executor->is_installing_snapshot()) 
@@ -790,8 +940,9 @@ namespace horsedb {
 
         {
             //todo lock?
-            std::unique_lock<std::mutex> lck(_mutex);
+            lck.unlock();
             last_log_id = _log_manager->last_log_id(true);
+            lck.lock();
 
         }
 
@@ -845,10 +996,77 @@ namespace horsedb {
         //stop_grant_self_timer(node);
     }
 
+    void NodeImpl::ConfigurationCtx::flush(const Configuration& conf,const Configuration& old_conf) 
+    {
+
+        if (is_busy())
+        {
+            
+        }
+        
+        conf.list_peers(&_new_peers);
+        if (old_conf.empty()) 
+        {
+            _stage = STAGE_STABLE;
+            _old_peers = _new_peers;
+        } 
+        else 
+        {
+            _stage = STAGE_JOINT;
+            old_conf.list_peers(&_old_peers);
+        }
+        _node->unsafe_apply_configuration(conf, old_conf.empty() ? NULL : &old_conf,true);
+            
+                                        
+    }
+void NodeImpl::unsafe_apply_configuration(const Configuration& new_conf,
+                                          const Configuration* old_conf,
+                                          bool leader_start) {
+
+    if (_conf_ctx.is_busy())
+    {
+        
+    }
+    LogEntry entry ;
+
+    entry.term = _current_term;
+    entry.cmdType = CM_Config;
+    
+    std::vector<PeerId> newPeers,oldPeers;
+    new_conf.list_peers(&newPeers);
+    for (size_t i = 0; i < newPeers.size(); i++)
+    {
+        entry.vPeer.push_back(newPeers[i].to_string());
+    }
+    
+    if (old_conf) 
+    {
+        
+        old_conf->list_peers(&oldPeers);
+        for (size_t i = 0; i < oldPeers.size(); i++)
+        {
+            entry.vOldPeer.push_back(oldPeers[i].to_string());
+        }
+    }
+    // ConfigurationChangeDone* configuration_change_done =
+    //         new ConfigurationChangeDone(this, _current_term, leader_start, _leader_lease.lease_epoch());
+    // // Use the new_conf to deal the quorum of this very log
+    // _ballot_box->append_pending_task(new_conf, old_conf, configuration_change_done);
+
+    // std::vector<LogEntry> entries;
+    // entries.push_back(entry);
+    // _log_manager->append_entries(entries,
+    //                              new LeaderStableClosure(
+    //                                     NodeId(_group_id, _server_id),
+    //                                     1u, _ballot_box));
+    _log_manager->check_and_set_configuration(&_conf);
+}
+
     void NodeImpl::handle_election_timeout( NodeImpl* node)
     {
         std::unique_lock<std::mutex> lck(node->_mutex);
 
+        TLOGINFO_RAFT(  "in  handle_election_timeout " <<endl );
         // check state
         if (node->_state != STATE_FOLLOWER) 
         {
@@ -870,7 +1088,7 @@ namespace horsedb {
         node->reset_leader_id(empty_id, status);
 
         //已经超时了,重新发起选举
-         node->pre_vote();
+         node->pre_vote(lck);
 
          return;
 
