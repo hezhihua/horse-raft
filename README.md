@@ -26,7 +26,7 @@ An  C++ implementation of RAFT consensus algorithm based on horse-rpc
 
 
 # 感谢
-Baidu开源的braft
+Baidu开源的[braft](https://github.com/baidu/braft)
 
 # 学习和交流
 QQ群:1124085420  
