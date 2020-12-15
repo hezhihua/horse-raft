@@ -64,6 +64,8 @@ struct PeerId {
         _idx = 0;
     }
 
+    string desc(){return _addr.desc();}
+
     bool is_empty() const 
     {
         return (_addr.host().empty() && _addr.port() == 0 && _idx == 0);

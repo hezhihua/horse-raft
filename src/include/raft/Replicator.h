@@ -294,6 +294,7 @@ public:
 
     const std::map<PeerId, Replicator*>& getAllReplicator(){return _rMap;}
     const map<string,RaftDBPrx>& getAllProxy(){return _mPrx;}
+    void  initProxy(map<string,RaftDBPrx>& mPrx){ _mPrx=mPrx;}
 
 private:
 

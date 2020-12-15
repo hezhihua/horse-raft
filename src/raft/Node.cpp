@@ -5,6 +5,7 @@
 #include "raft/RaftDBCallback.h"
 #include "logger/logger.h"
 #include "cfg/config.h"
+#include "client/Communicator.h"
 
 namespace horsedb {
 
@@ -83,6 +84,7 @@ namespace horsedb {
 
     void NodeImpl::VoteBallotCtx::start_grant_self_timer(NodeImpl* node) 
     {
+        cout<<"_timer.startTimer() "<<endl;
         _timer.startTimer();
 
         GrantSelfArg* timer_arg = new GrantSelfArg;
@@ -93,6 +95,7 @@ namespace horsedb {
     }
     void NodeImpl::VoteBallotCtx::stop_grant_self_timer(NodeImpl* node) 
     {
+        cout<<"_timer.stopTimer() "<<endl;
         _timer.stopTimer();
     }
 
@@ -105,7 +108,9 @@ namespace horsedb {
 
         delete grant_arg;
 
+        cout<<"handle_grant_self_timedout 1"<<endl;
         std::unique_lock<std::mutex> lck(node->_mutex);//unlock
+        cout<<"handle_grant_self_timedout 1"<<endl;
         if (!is_active_state(node->_state) ||vote_ctx->version() != vote_ctx_version) 
         {
             
@@ -130,7 +135,9 @@ namespace horsedb {
     {
         TLOGINFO_RAFT( "node " << node_id()  << " failed to transfer leadership to peer="
                 << peer << " : reached timeout"<<endl);
+        cout<<"handle_transfer_timeout 1"<<endl;
         std::unique_lock<std::mutex> lck(_mutex);
+        cout<<"handle_transfer_timeout 1"<<endl;
         if (term == _current_term) 
         {
             _replicator_group.stop_transfer_leadership(peer);
@@ -161,7 +168,12 @@ namespace horsedb {
         // delete timer and something else
         if (_state == STATE_CANDIDATE) 
         {
-            _vote_timer.stopTimer();
+            cout<<" in step_down,i am candidate, _vote_timer.stopTimer()"<<endl;
+            if (_vote_timer.isTerminate())
+            {
+                _vote_timer.stopTimer();
+            }
+            
             _vote_ctx.reset(this);
         } 
         else if (_state == STATE_FOLLOWER) 
@@ -170,6 +182,7 @@ namespace horsedb {
         } 
         else if (_state <= STATE_TRANSFERRING) 
         {
+            cout<<"_stepdown_timer.stopTimer()"<<endl;
             _stepdown_timer.stopTimer();
             _ballot_box->clear_pending_tasks();
 
@@ -227,7 +240,7 @@ namespace horsedb {
 
         if (_stop_transfer_arg != NULL) //中断让位
         {
-            
+            cout<<"_transfer_timer.startTimer()"<<endl;
             _transfer_timer.stopTimer();
             
                 // Get the right to delete _stop_transfer_arg.
@@ -238,6 +251,7 @@ namespace horsedb {
             // mark _stop_transfer_arg to NULL
             _stop_transfer_arg = NULL;
         }
+        cout<<"_election_timer.startTimer()"<<endl;
         _election_timer.startTimer();
         _election_timer.postRepeated(1000,1000,NodeImpl::handle_election_timeout,this);
 
@@ -245,7 +259,9 @@ namespace horsedb {
 
     void NodeImpl::handle_vote_timeout(NodeImpl* node) 
     {
+        cout<<"handle_vote_timeout 1"<<endl;
         std::unique_lock<std::mutex> lck(node->_mutex);
+        cout<<"handle_vote_timeout 1"<<endl;
 
         // check state
         if (node->_state != STATE_CANDIDATE) 
@@ -297,6 +313,27 @@ namespace horsedb {
     static inline int heartbeat_timeout(int election_timeout) 
     {
         return std::max(election_timeout / raft_election_heartbeat_factor, 10);
+    }
+
+    void NodeImpl::initProxy()
+    {
+        std::vector<PeerId> peers;
+        _conf.conf.list_peers( &peers);
+        string raftObj = "horsedb.RaftDBServer.RaftDBObj@";//"horsedb.RaftDBServer.RaftDBObj@tcp -h 0.0.0.0 -p 8085";
+        for (size_t i = 0; i < peers.size(); i++)
+        {
+            Communicator* _comm=new Communicator();
+            auto pPrx= _comm->stringToProxy<RaftDBPrx>(raftObj+peers[i].desc());
+            cout<<"raftObj+peers[i].desc()="<<raftObj+peers[i].desc()<<endl;
+
+            pPrx->tars_connect_timeout(5000);
+            pPrx->tars_async_timeout(60*1000);
+
+            _mPrx[peers[i].to_string()]=pPrx;
+            
+        }
+
+        _replicator_group.initProxy(_mPrx);
     }
 
 
@@ -383,6 +420,8 @@ namespace horsedb {
             _conf.conf = _options.initial_conf;
         }
 
+        initProxy();
+
         // init replicator
         ReplicatorGroupOptions rg_options;
         rg_options.heartbeat_timeout_ms = heartbeat_timeout(_options.election_timeout_ms);
@@ -422,7 +461,9 @@ namespace horsedb {
 
         // Now the raft node is started , have to acquire the lock to avoid race
         // conditions
-        std::unique_lock<std::mutex> lck(_mutex);
+        cout<<"init 1"<<endl;
+        //std::unique_lock<std::mutex> lck(_mutex);
+        cout<<"init 1"<<endl;
         if (_conf.stable() && _conf.conf.size() == 1u && _conf.conf.contains(_server_id)) 
         {
             // The group contains only this server which must be the LEADER, trigger
@@ -579,6 +620,7 @@ namespace horsedb {
         if (_state == STATE_FOLLOWER) 
         {
            TLOGINFO_RAFT( "node " << _group_id << ":" << _server_id  << " term " << _current_term << " stop election_timer"<<endl);
+           cout<<"_election_timer.stopTimer()"<<endl;
             _election_timer.stopTimer();
         }
         // reset leader_id before vote
@@ -594,7 +636,7 @@ namespace horsedb {
         cout<<"node " << _group_id << ":" << _server_id<< " term " << _current_term << " start vote_timer"<<endl;
         TLOGINFO_RAFT( "node " << _group_id << ":" << _server_id<< " term " << _current_term << " start vote_timer"<<endl);
 
-        _vote_timer.startTimer();//起一个定时线程如果时间到了但未选到自己，继续执行elect_self
+        _vote_timer.startTimer();//起一个定时线程如果时间到了但未选到自己，继续执行elect_self，自己变为主后stop
         _vote_timer.postRepeated(1000,1000,NodeImpl::handle_vote_timeout,this);
 
         _pre_vote_ctx.reset(this);//stop_grant_self_timer
@@ -683,11 +725,19 @@ namespace horsedb {
             return;
         }
         TLOGINFO_RAFT("node " << _group_id << " :" << _server_id << " term " << _current_term<< " become leader of group " << _conf.conf<< " " << _conf.old_conf);
+        
+        _state = STATE_LEADER;
         // cancel candidate vote timer
-        _vote_timer.stopTimer();
+        cout<<"become_leader(),cancel candidate vote timer:_vote_timer.stopTimer()"<<endl;
+        if (_vote_timer.isTerminate())
+        {
+           _vote_timer.stopTimer();
+        }
+        
+        
         _vote_ctx.reset(this);
 
-        _state = STATE_LEADER;
+        
         _leader_id = _server_id;
 
         _replicator_group.reset_term(_current_term);
@@ -746,7 +796,9 @@ namespace horsedb {
 
     void NodeImpl::on_configuration_change_done(int64_t term) 
     {
+        cout<<"on_configuration_change_done 1"<<endl;
         std::unique_lock<std::mutex> lck(_mutex);
+        cout<<"on_configuration_change_done 1"<<endl;
         if (_state > STATE_TRANSFERRING || term != _current_term) 
         {
             TLOGINFO_RAFT( "node " << node_id()
@@ -762,7 +814,9 @@ namespace horsedb {
     }
     void NodeImpl::leader_lease_start(int64_t lease_epoch) 
     {
+        cout<<"leader_lease_start 1"<<endl;
         std::unique_lock<std::mutex> lck(_mutex);
+        cout<<"leader_lease_start 1"<<endl;
         if (_state == STATE_LEADER) 
         {
             _leader_lease.on_lease_start(lease_epoch, last_leader_active_timestamp());
@@ -1064,7 +1118,9 @@ void NodeImpl::unsafe_apply_configuration(const Configuration& new_conf,
 
     void NodeImpl::handle_election_timeout( NodeImpl* node)
     {
+        cout<<"handle_election_timeout 1"<<endl;
         std::unique_lock<std::mutex> lck(node->_mutex);
+        cout<<"handle_election_timeout 1"<<endl;
 
         TLOGINFO_RAFT(  "in  handle_election_timeout " <<endl );
         // check state
@@ -1096,7 +1152,9 @@ void NodeImpl::unsafe_apply_configuration(const Configuration& new_conf,
 
     int NodeImpl::handle_pre_vote_request(const RequestVoteReq& request, RequestVoteRes& response) 
     {
+        cout<<"handle_pre_vote_request 1"<<endl;
         std::unique_lock<std::mutex> lck(_mutex);
+        cout<<"handle_pre_vote_request 1"<<endl;
 
         if (!is_active_state(_state)) 
         {
@@ -1156,7 +1214,9 @@ void NodeImpl::unsafe_apply_configuration(const Configuration& new_conf,
 
     int NodeImpl::handle_request_vote_request(const RequestVoteReq& request, RequestVoteRes& response) 
     {
+        cout<<"handle_request_vote_request 1"<<endl;
         std::unique_lock<std::mutex> lck(_mutex);
+        cout<<"handle_request_vote_request 1"<<endl;
 
         if (!is_active_state(_state)) 
         {
@@ -1274,7 +1334,9 @@ void NodeImpl::unsafe_apply_configuration(const Configuration& new_conf,
 
     int NodeImpl::increase_term_to(int64_t new_term, const RaftState& status) 
     {
+        cout<<"increase_term_to 1"<<endl;
         std::unique_lock<std::mutex> lck(_mutex);
+        cout<<"increase_term_to 1"<<endl;
         if (new_term <= _current_term) 
         {
             return EINVAL;
@@ -1286,7 +1348,9 @@ void NodeImpl::unsafe_apply_configuration(const Configuration& new_conf,
     //follower 收到 leader 的 AppendEntriesReq
     int NodeImpl::handle_append_entries_request(const AppendEntriesReq& request, AppendEntriesRes& response) 
     {
+        cout<<"handle_append_entries_request 1"<<endl;
         std::unique_lock<std::mutex> lck(_mutex);
+        cout<<"handle_append_entries_request 1"<<endl;
 
         response.term=_current_term;
 

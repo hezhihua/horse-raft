@@ -284,7 +284,7 @@ namespace horsedb{
             {
                 
                 TC_ThreadLock::Lock lock(*this);
-                timedWait(200);//todo 心跳时间间隔		
+                timedWait(2000);//200 todo 心跳时间间隔		
                 sendEmptyEntries(true);
             }
         }

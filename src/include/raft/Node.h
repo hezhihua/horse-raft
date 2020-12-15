@@ -249,6 +249,8 @@ private:
 
     void do_apply();
 
+    void initProxy();
+
 
     static void check_dead_nodes(NodeImpl* node);
 

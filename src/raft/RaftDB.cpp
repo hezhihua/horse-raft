@@ -1,78 +1,79 @@
 #include "raft/RaftDB.h"
 #include <iostream>
+#include "raft/Node.h"
+#include "raft/Configuration.h"
+#include "raft/NodeManager.h"
 using namespace std;
 
 namespace horsedb {
 
  horsedb::Int32 RaftDB::appendEntries(const horsedb::AppendEntriesReq & tReq,horsedb::AppendEntriesRes &tRes,horsedb::TarsCurrentPtr current) 
  {
-    cout<<"appendEntries,tReq.serverID="<<tReq.serverID<<endl;
-    tRes.term=5;
     int iRet=-1;
+      cout<<"appendEntries,tReq.serverID="<<tReq.serverID<< ",request.peerID="<<tReq.peerID<<endl;
+      try
+      {
+         do
+         {
+            PeerId peer_id;
+            if (0 != peer_id.parse(tReq.peerID))
+            {
+               //log
+               break;
+            }
 
-      //    try
-   //    {
-   //       do
-   //       {
-   //          PeerId peer_id;
-   //          if (0 != peer_id.parse(request.peerID) 
-   //          {
-   //             //log
-   //             break;
-   //          }
+            NodeImpl *node=NodeManager::getInstance()->get(tReq.groupID,peer_id);
+            if (node==NULL)
+            {
+               //log
+               break;
+            }
 
-   //          NodeImpl *node=NodeManager::getInstance()->get(tReq.groupID,peer_id);
-   //          if (node==NULL)
-   //          {
-   //             //log
-   //             break;
-   //          }
+            iRet= node->handle_append_entries_request(tReq, tRes);
 
-   //          iRet= node->handle_append_entries_request(tReq, tRes);
-
-   //       } while (0);
+         } while (0);
          
-   //    }
-   //    catch(const std::exception& e)
-   //    {
-   //       std::cerr << e.what() << '\n';
-   //    }
+      }
+      catch(const std::exception& e)
+      {
+         std::cerr << e.what() << '\n';
+      }
 
-   return iRet;
+      return iRet;
    
 
  }
 
   horsedb::Int32 RaftDB::requestVote(const horsedb::RequestVoteReq & tReq,horsedb::RequestVoteRes &tRes,horsedb::TarsCurrentPtr current) 
   {
-    int iRet=-1;
-//    try
-//    {
-//       do
-//       {
-//          PeerId peer_id;
-//          if (0 != peer_id.parse(request.peerID) 
-//          {
-//             //log
-//             break;
-//          }
+      int iRet=-1;
+      try
+      {
+         do
+         {
+            PeerId peer_id;
+            if (0 != peer_id.parse(tReq.peerID) )
+            {
+               //log
+               break;
+            }
 
-//          NodeImpl *node=NodeManager::getInstance()->get(tReq.groupID,peer_id);
-//          if (node==NULL)
-//          {
-//             //log
-//             break;
-//          }
+            NodeImpl *node=NodeManager::getInstance()->get(tReq.groupID,peer_id);
+            if (node==NULL)
+            {
+               //log
+               break;
+            }
 
-//          iRet= node->handle_request_vote_request(tReq, tRes);
+            iRet= node->handle_request_vote_request(tReq, tRes);
 
-//       } while (0);
-      
-//    }
-//    catch(const std::exception& e)
-//    {
-//       std::cerr << e.what() << '\n';
-//    }
+         } while (0);
+         
+      }
+      catch(const std::exception& e)
+      {
+         std::cerr << e.what() << '\n';
+      }
    
     return iRet;
   }
@@ -89,34 +90,34 @@ horsedb::Int32  RaftDB::installSnapshot(const horsedb::InstallSnapshotReq &tReq,
  horsedb::Int32   RaftDB::preVote(const horsedb::RequestVoteReq &tReq, horsedb::RequestVoteRes& tRes, std::shared_ptr<horsedb::Current>)
  {
 
-    int iRet=-1;
-//    try
-//    {
-//       do
-//       {
-//          PeerId peer_id;
-//          if (0 != peer_id.parse(request.peerID) 
-//          {
-//             //log
-//             break;
-//          }
+      int iRet=-1;
+      try
+      {
+         do
+         {
+            PeerId peer_id;
+            if (0 != peer_id.parse(tReq.peerID) )
+            {
+               //log
+               break;
+            }
 
-//          NodeImpl *node=NodeManager::getInstance()->get(tReq.groupID,peer_id);
-//          if (node==NULL)
-//          {
-//             //log
-//             break;
-//          }
+            NodeImpl *node=NodeManager::getInstance()->get(tReq.groupID,peer_id);
+            if (node==NULL)
+            {
+               //log
+               break;
+            }
 
-//          iRet= node->handle_pre_vote_request(tReq, tRes);
+            iRet= node->handle_pre_vote_request(tReq, tRes);
 
-//       } while (0);
+         } while (0);
       
-//    }
-//    catch(const std::exception& e)
-//    {
-//       std::cerr << e.what() << '\n';
-//    }
+      }
+      catch(const std::exception& e)
+      {
+         std::cerr << e.what() << '\n';
+      }
    
     return iRet;
 

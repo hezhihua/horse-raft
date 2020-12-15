@@ -93,7 +93,7 @@ void AsyncLogThread::run()
 			time2process();
 			TC_ThreadLock::Lock lock(*this);
 			//一个请求包被处理要等待的最大时间
-	        timedWait(200);		
+	        timedWait(3000);//200		
 		}
     }
 }
@@ -106,7 +106,7 @@ bool AsyncLogThread::batchWrite()
 		return true;
 	}
 
-	//通知所有replicator 给远程节点发送日志
+	//通知所有replicator线程 给远程节点发送日志
 	auto &rmap=ReplicatorGroup::getInstance()->getAllReplicator();
 	for (auto &item : rmap)
 	{
