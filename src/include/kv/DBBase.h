@@ -14,35 +14,37 @@ using namespace std;
 using namespace rocksdb;
 
 namespace horsedb{
-    class  DBBase :public TC_Singleton<DBBase>
+    class  DBBase 
     {
     private:
         /* data */
     public:
 
         //DBBase(const string &dbPath,const vector<string> &vColumnFamilyName);
-        void init(const string &dbPath,const vector<string> &vColumnFamilyName);
-        ~ DBBase();
+        virtual void init(const string &dbPath,const vector<string> &vColumnFamilyName);
+        virtual ~ DBBase();
 
-        bool Create(const string&dbname);
-        bool DBExist(const string& dbname);
-        bool Put(const string&key,const string &value,const string& dbname);
+        virtual bool Create(const string&dbname,const map<string,string> &msession=map<string,string>());
+        virtual bool DBExist(const string& dbname);
+        virtual bool Put(const string&key,const string &value,const string& dbname,const map<string,string> &msession=map<string,string>());
 
-        bool WriteBatch(rocksdb::WriteBatch &updates,const string& db);
-        bool Put2WriteBatch(rocksdb::WriteBatch &updates,const string&key,const string &value,const string& db);
+        virtual bool WriteBatch(rocksdb::WriteBatch &updates,const string& db,const map<string,string> &msession=map<string,string>());
+        virtual bool Put2WriteBatch(rocksdb::WriteBatch &updates,const string&key,const string &value,const string& db,const map<string,string> &msession=map<string,string>());
 
-        bool Get(const string&key, string &value,const string& dbname);
-        rocksdb::Status GetS(const string&key, string &value,const string& db);
+        virtual bool Get(const string&key, string &value,const string& dbname);
+        virtual rocksdb::Status GetS(const string&key, string &value,const string& db);
 
-        bool KeyMayExist(const string&key, string &value,const string& dbname="sys");
+        virtual bool KeyMayExist(const string&key, string &value,const string& dbname="sys");
         bool RangeGet(const string&beginkey, string &endkey,vector<string> &vValue,const string& dbname);
-        bool PreKeyGet(const string&prekey, vector<string> &vValue,const string& dbname, vector<string> &vKey );
-        bool ShowDB(vector<string> &vDBName );
+        virtual bool PreKeyGet(const string&prekey, vector<string> &vValue,const string& dbname, vector<string> &vKey );
+        virtual bool ShowDB(vector<string> &vDBName );
 
-        bool GetFirstKV( string&key, string &value,const string& dbname);
-        bool GetLastKV( string&key, string &value,const string& dbname);
-        bool DeleteRange(const string& begin_key, const string& end_key,const string& dbname);
-        bool Delete(const string& key, const string& dbname);
+        virtual bool GetFirstKV( string&key, string &value,const string& dbname);
+        virtual bool GetLastKV( string&key, string &value,const string& dbname);
+        virtual bool DeleteRange(const string& begin_key, const string& end_key,const string& dbname,const map<string,string> &msession=map<string,string>());
+        virtual bool Delete(const string& key, const string& dbname,const map<string,string> &msession=map<string,string>());
+
+        virtual bool PreKeyGetFirst(const string&prekey, string &firstKey, string &firstValue,const string& dbname);
 
         DB*  db(){return _db;}
 

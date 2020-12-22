@@ -123,6 +123,7 @@ struct RequestVoteReq {
 3 optional  int term;
 4 optional  int lastLogIndex;
 5 optional  int lastLogTerm;
+6 optional  int ctxVersion;//对话id
 };
 
 
@@ -130,7 +131,7 @@ struct RequestVoteRes {
 
 0 optional  int term;
 1 optional  bool isVoteGranted;
-2 optional  string peerID;//目标服务器地址
+2 optional  string peerID;//谁回的包
 
 };
 

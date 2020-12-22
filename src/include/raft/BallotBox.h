@@ -67,7 +67,7 @@ public:
 
     // Called by leader, otherwise the behavior is undefined
     // Store application context before replication.
-    int append_pending_task(const Configuration& conf, const Configuration* old_conf,const ClientContext &_ClientContext);
+    int append_pending_task(const Configuration& conf, const Configuration* old_conf, ClientContext *ClientContext);
 
     // Called by follower, otherwise the behavior is undefined.
     // Set commited index received from leader
@@ -82,7 +82,7 @@ public:
 
     void get_status(BallotBoxStatus* ballot_box_status);
 
-    int pop_until(int64_t index, std::vector<ClientContext> &out, int64_t *out_first_index);
+    int pop_until(int64_t index, std::vector<ClientContext*> &out, int64_t *out_first_index);
 
 private:
 
@@ -93,7 +93,7 @@ private:
     int64_t                                         _pending_index;//待提交日志索引
     std::deque<Ballot>                              _pending_meta_queue;//每一次log的commit都需要过半数的同意,用队列记录待提交日志的投票/反馈结果
 
-    deque<ClientContext>  _vContext;
+    deque<ClientContext *>  _vContext;
 
     int64_t  _first_index; //for _vContext
 

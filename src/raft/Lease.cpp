@@ -137,7 +137,9 @@ void FollowerLease::reset() {
     _last_leader = PeerId();
     _last_leader_timestamp = 0;
 }
-
+//心跳超时可以自己配置，看你自己的网络规模和拓扑；
+//竞选超时是随机的，大概在几十到几百毫秒；
+//通常情况下，心跳超时比竞选超时长得多，心跳是秒级。 _election_timeout_ms 是 心跳
 void FollowerLease::reset_election_timeout_ms(int64_t election_timeout_ms,
                                               int64_t max_clock_drift_ms) {
     _election_timeout_ms = election_timeout_ms;

@@ -14,8 +14,6 @@ using namespace std;
 #include "client/ServantProxy.h"
 #include "client/Servant.h"
 
-
-
 namespace horsedb
 {
     enum EStatus
@@ -919,7 +917,7 @@ namespace horsedb
         }
         static string MD5()
         {
-            return "0e75f62b433b70c9298e48d40d9b78ad";
+            return "01df190845cde8d7bee8e1ad73da402a";
         }
         RequestVoteReq()
         {
@@ -933,6 +931,7 @@ namespace horsedb
             term = 0;
             lastLogIndex = 0;
             lastLogTerm = 0;
+            ctxVersion = 0;
         }
         template<typename WriterT>
         void writeTo(horsedb::TarsOutputStream<WriterT>& _os) const
@@ -961,6 +960,10 @@ namespace horsedb
             {
                 _os.write(lastLogTerm, 5);
             }
+            if (ctxVersion != 0)
+            {
+                _os.write(ctxVersion, 6);
+            }
         }
         template<typename ReaderT>
         void readFrom(horsedb::TarsInputStream<ReaderT>& _is)
@@ -972,6 +975,7 @@ namespace horsedb
             _is.read(term, 3, false);
             _is.read(lastLogIndex, 4, false);
             _is.read(lastLogTerm, 5, false);
+            _is.read(ctxVersion, 6, false);
         }
         ostream& display(ostream& _os, int _level=0) const
         {
@@ -982,6 +986,7 @@ namespace horsedb
             _ds.display(term,"term");
             _ds.display(lastLogIndex,"lastLogIndex");
             _ds.display(lastLogTerm,"lastLogTerm");
+            _ds.display(ctxVersion,"ctxVersion");
             return _os;
         }
         ostream& displaySimple(ostream& _os, int _level=0) const
@@ -992,7 +997,8 @@ namespace horsedb
             _ds.displaySimple(serverID, true);
             _ds.displaySimple(term, true);
             _ds.displaySimple(lastLogIndex, true);
-            _ds.displaySimple(lastLogTerm, false);
+            _ds.displaySimple(lastLogTerm, true);
+            _ds.displaySimple(ctxVersion, false);
             return _os;
         }
     public:
@@ -1002,10 +1008,11 @@ namespace horsedb
         horsedb::Int32 term;
         horsedb::Int32 lastLogIndex;
         horsedb::Int32 lastLogTerm;
+        horsedb::Int32 ctxVersion;
     };
     inline bool operator==(const RequestVoteReq&l, const RequestVoteReq&r)
     {
-        return l.groupID == r.groupID && l.peerID == r.peerID && l.serverID == r.serverID && l.term == r.term && l.lastLogIndex == r.lastLogIndex && l.lastLogTerm == r.lastLogTerm;
+        return l.groupID == r.groupID && l.peerID == r.peerID && l.serverID == r.serverID && l.term == r.term && l.lastLogIndex == r.lastLogIndex && l.lastLogTerm == r.lastLogTerm && l.ctxVersion == r.ctxVersion;
     }
     inline bool operator!=(const RequestVoteReq&l, const RequestVoteReq&r)
     {
@@ -2273,7 +2280,7 @@ namespace horsedb
     {
     public:
         virtual ~RaftDB(){}
-        virtual horsedb::Int32 appendEntries(const horsedb::AppendEntriesReq & tReq,horsedb::AppendEntriesRes &tRes,horsedb::TarsCurrentPtr current) ;
+        virtual horsedb::Int32 appendEntries(const horsedb::AppendEntriesReq & tReq,horsedb::AppendEntriesRes &tRes,horsedb::TarsCurrentPtr current);
         static void async_response_appendEntries(horsedb::TarsCurrentPtr current, horsedb::Int32 _ret, const horsedb::AppendEntriesRes &tRes)
         {
             if (current->getRequestVersion() == TUPVERSION )

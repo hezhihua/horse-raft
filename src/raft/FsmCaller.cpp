@@ -10,7 +10,12 @@ FSMCaller::FSMCaller(size_t iQueueCap)
 	 _ApplyTaskQueue = new TC_CasQueue<ApplyTask>();
 	start();   
 }
-
+FSMCaller::FSMCaller(size_t iQueueCap,NodeImpl* node)
+: _terminate(false), _iQueueCap(iQueueCap),_node(node)
+{
+	 _ApplyTaskQueue = new TC_CasQueue<ApplyTask>();
+	start();   
+}
 FSMCaller::~FSMCaller()
 {
     terminate();
@@ -70,7 +75,7 @@ void FSMCaller::run()
     while (!_terminate)
     {
 
-        if(_ApplyTaskQueue->size()==20)
+        if(_ApplyTaskQueue->size()>=20)
         {
             batchProcess();
         }
@@ -78,7 +83,7 @@ void FSMCaller::run()
 		{
 			time2process();
 			TC_ThreadLock::Lock lock(*this);
-	        timedWait(7000);	//300	
+	        timedWait(100);	//300 一个包等待被处理的最大时间	
 		}
 
     }
@@ -143,7 +148,7 @@ void FSMCaller::batchProcess()
 }
 void FSMCaller::time2process()
 {
-	TLOGINFO_RAFT("[FsmCaller::time2process] time2process." << endl);
+	//TLOGINFO_RAFT("[FsmCaller::time2process] time2process." << endl);
 
 	try
 	{
@@ -223,7 +228,10 @@ int FSMCaller::on_stop_following(const LeaderChangeContext& stop_following_conte
 //leader和follwer都可能会执行此函数
 void FSMCaller::do_committed(int64_t committed_index)
 {
+    //最后一个应用到状态机的index
     int64_t last_applied_index = _last_applied_index.load(std::memory_order_relaxed);
+    TLOGINFO_RAFT("last_applied_index:" << last_applied_index <<
+    " committed_index:" << committed_index << endl);
 
     // We can tolerate the disorder of committed_index
     if (last_applied_index >= committed_index) 
@@ -232,9 +240,10 @@ void FSMCaller::do_committed(int64_t committed_index)
     }
 
     //批量应用到状态机,即进行业务处理,批量响应客户端
-    std::vector<ClientContext> out;
+    std::vector<ClientContext*> out;
     int64_t out_first_index;
-    _ballot_box->pop_until(committed_index, out, &out_first_index);
+    _node->_ballot_box->pop_until(committed_index, out, &out_first_index);
+    TLOGINFO_RAFT("out.size():" << out.size() <<" out_first_index:" << out_first_index << endl);
 
     IteratorImpl iter_impl(_fsm, _log_manager, out, out_first_index,last_applied_index, committed_index, &_applying_index);
     for (; iter_impl.is_good();) 
@@ -277,6 +286,13 @@ void FSMCaller::do_committed(int64_t committed_index)
         // Try move to next in case that we pass the same log twice.
         iter.next();
     }
+
+    const int64_t last_index = iter_impl.index() - 1;
+    const int64_t last_term = _log_manager->get_term(last_index);
+    LogId last_applied_id(last_index, last_term);
+    _last_applied_index.store(committed_index, std::memory_order_release);
+    _last_applied_term = last_term;
+    _log_manager->set_applied_id(last_applied_id);
 
 
 }
@@ -395,7 +411,7 @@ void FSMCaller::do_snapshot_load()
 
 
 IteratorImpl::IteratorImpl(StateMachine* sm, LogManager* lm,
-                          std::vector<ClientContext> &vContext, 
+                          std::vector<ClientContext*> &vContext, 
                           int64_t first_closure_index,
                           int64_t last_applied_index, 
                           int64_t committed_index,
@@ -454,7 +470,7 @@ const ClientContext* IteratorImpl::done() const
     {
         return NULL;
     }
-    return &_vClientContext[_cur_index - _first_closure_index];
+    return _vClientContext[_cur_index - _first_closure_index];
 }
 
 

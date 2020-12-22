@@ -80,6 +80,7 @@ public:
 
     void init(const ReplicatorOptions &options);
     void _cancel_append_entries_rpcs() ;
+    bool isTerminnate(){return _terminate;}
     
 
 

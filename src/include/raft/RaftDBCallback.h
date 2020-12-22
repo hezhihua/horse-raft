@@ -27,10 +27,12 @@ class RaftDBCallback:public RaftDBPrxCallback
     virtual void callback_appendEntries_exception(horsedb::Int32 ret,const horsedb::AppendEntriesReq &tReq);
     virtual void callback_appendEntries_exception(horsedb::Int32 ret);
 
+    virtual void callback_requestVote(horsedb::Int32 ret, const horsedb::RequestVoteReq& tReq, const horsedb::RequestVoteRes& tRes);   
     virtual void callback_requestVote(horsedb::Int32 ret,  const horsedb::RequestVoteRes& tRes);   
     virtual void callback_requestVote_exception(horsedb::Int32 ret);
 
     virtual void callback_preVote(horsedb::Int32 ret,  const horsedb::RequestVoteRes& tRes);
+    virtual void callback_preVote(horsedb::Int32 ret,  const horsedb::RequestVoteReq& tReq, const horsedb::RequestVoteRes& tRes);
     virtual void callback_preVote_exception(horsedb::Int32 ret);
 
     virtual void callback_installSnapshot(horsedb::Int32 ret,  const horsedb::InstallSnapshotRes& tRes);
@@ -38,6 +40,8 @@ class RaftDBCallback:public RaftDBPrxCallback
 
     virtual void callback_timeoutNow(horsedb::Int32 ret,  const horsedb::TimeoutNowRes& tRes);
     virtual void callback_timeoutNow_exception(horsedb::Int32 ret);
+
+    virtual int onDispatch(horsedb::ReqMessagePtr msg);
 
 
 };

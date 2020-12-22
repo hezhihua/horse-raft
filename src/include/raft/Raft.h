@@ -19,6 +19,8 @@
 #include "raft/Configuration.h"
 #include "raft/RaftState.h"
 #include "raft/LogEntryContext.h"
+#include "kv/DBBase.h"
+#include <memory>
 
 namespace horsedb {
 
@@ -482,6 +484,8 @@ struct NodeOptions {
     // Default: false
     bool filter_before_copy_remote;
 
+    shared_ptr<DBBase> dbBase;
+
 
 
     // If true, RPCs through raft_cli will be denied.
@@ -520,6 +524,8 @@ public:
 
     // Return true if this is the leader of the belonging group
     bool is_leader();
+
+    int get_term();
 
     // Return true if this is the leader, and leader lease is valid. It's always
     // false when |raft_enable_leader_lease == false|.

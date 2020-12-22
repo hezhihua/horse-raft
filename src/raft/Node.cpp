@@ -22,6 +22,10 @@ namespace horsedb {
     {
         return _impl->is_leader();
     }
+    int Node::get_term()
+    {
+        return _impl->_current_term;
+    }
     void Node::apply(const Task& task)
     {
         return _impl->apply(task);
@@ -44,6 +48,8 @@ namespace horsedb {
     , _stop_transfer_arg(NULL)
     , _vote_triggered(false)
     , _waking_candidate(0)
+    ,_pAsyncLogThread(NULL)
+    ,_replicator_group(NULL)
     //, _append_entries_cache(NULL)
     , _append_entries_cache_version(0)
     , _node_readonly(false)
@@ -68,6 +74,8 @@ namespace horsedb {
     , _vote_triggered(false)
     , _waking_candidate(0)
     //, _append_entries_cache(NULL)
+    ,_pAsyncLogThread(NULL)
+    ,_replicator_group(NULL)
     , _append_entries_cache_version(0)
     , _node_readonly(false)
     , _majority_nodes_readonly(false)
@@ -140,7 +148,7 @@ namespace horsedb {
         cout<<"handle_transfer_timeout 1"<<endl;
         if (term == _current_term) 
         {
-            _replicator_group.stop_transfer_leadership(peer);
+            _replicator_group->stop_transfer_leadership(peer);
             if (_state == STATE_TRANSFERRING) 
             {
                 _leader_lease.on_leader_start(term);
@@ -153,10 +161,14 @@ namespace horsedb {
 
 
     //进入follwer角色,并开始检测leader心跳是否超时,超时则触发选举
+    //主线程
+    //服务端业务线程
+    //回应异步线程
+    //定时线程 都有可能调用
     void NodeImpl::step_down(const int64_t term, bool wakeup_a_candidate,  const RaftState& status) 
     {
         TLOGINFO_RAFT(   "node " << _group_id << ":" << _server_id
-                << " term " << _current_term 
+                << " _current_term " << _current_term 
                 << " stepdown from " << state2str(_state)
                 << " new_term " << term
                 << " wakeup_a_candidate=" << wakeup_a_candidate<<endl);
@@ -168,7 +180,7 @@ namespace horsedb {
         // delete timer and something else
         if (_state == STATE_CANDIDATE) 
         {
-            cout<<" in step_down,i am candidate, _vote_timer.stopTimer()"<<endl;
+            TLOGINFO_RAFT(" in step_down,i am candidate, _vote_timer.stopTimer()"<<endl);
             if (_vote_timer.isTerminate())
             {
                 _vote_timer.stopTimer();
@@ -228,14 +240,28 @@ namespace horsedb {
         // stop stagging new node
         if (wakeup_a_candidate) 
         {
-            _replicator_group.stop_all_and_find_the_next_candidate((Replicator*)&_waking_candidate, _conf);
+            _replicator_group->stop_all_and_find_the_next_candidate((Replicator*)&_waking_candidate, _conf);
             // FIXME: We issue the RPC in the critical section, which is fine now
             // since the Node is going to quit when reaching the branch
             Replicator::send_timeout_now_and_stop((Replicator*)&_waking_candidate);
         } 
         else 
         {
-            _replicator_group.stop_all();//todo , only leader can do this?
+             TLOGINFO_RAFT( "node " << _group_id << ":" << _server_id
+                    << " _replicator_group->stop_all()"<<endl)
+            //todo , only leader can do this?
+            
+            if (_replicator_group)
+            {
+                //有可能阻塞
+                _replicator_group->stop_all();
+            }
+            if (_pAsyncLogThread)
+            {
+                _pAsyncLogThread->terminate();
+            }
+
+            
         }
 
         if (_stop_transfer_arg != NULL) //中断让位
@@ -251,17 +277,21 @@ namespace horsedb {
             // mark _stop_transfer_arg to NULL
             _stop_transfer_arg = NULL;
         }
-        cout<<"_election_timer.startTimer()"<<endl;
+        
+        TLOGINFO_RAFT("_election_timer.startTimer()"<<endl);
         _election_timer.startTimer();
-        _election_timer.postRepeated(1000,1000,NodeImpl::handle_election_timeout,this);
+        //定时间隔时间比FollowerLease election_timeout_ms 小一点
+        _election_timer.postRepeated(2000,false,NodeImpl::handle_election_timeout,this);
 
     }
 
+    //候选人在定时间隔范围内还没有变为主,则再次重新开始选举
     void NodeImpl::handle_vote_timeout(NodeImpl* node) 
     {
         cout<<"handle_vote_timeout 1"<<endl;
         std::unique_lock<std::mutex> lck(node->_mutex);
         cout<<"handle_vote_timeout 1"<<endl;
+        TLOGINFO_RAFT("handle_vote_timeout ,only candidate can do,i am "<<state2str(node->_state) <<endl)
 
         // check state
         if (node->_state != STATE_CANDIDATE) 
@@ -322,18 +352,20 @@ namespace horsedb {
         string raftObj = "horsedb.RaftDBServer.RaftDBObj@";//"horsedb.RaftDBServer.RaftDBObj@tcp -h 0.0.0.0 -p 8085";
         for (size_t i = 0; i < peers.size(); i++)
         {
-            Communicator* _comm=new Communicator();
+            Communicator  *_comm=new Communicator();
             auto pPrx= _comm->stringToProxy<RaftDBPrx>(raftObj+peers[i].desc());
             cout<<"raftObj+peers[i].desc()="<<raftObj+peers[i].desc()<<endl;
 
             pPrx->tars_connect_timeout(5000);
-            pPrx->tars_async_timeout(60*1000);
+            //异步超时时间设置小一点，一般远程节点连接不上的时候会把请求包放到队列,等连接上再发
+            //但raft模式下,连接不上发不出去直接设置为超时丢弃则可
+            pPrx->tars_async_timeout(500);
 
             _mPrx[peers[i].to_string()]=pPrx;
             
         }
 
-        _replicator_group.initProxy(_mPrx);
+        _replicator_group->initProxy(_mPrx);
     }
 
 
@@ -404,6 +436,7 @@ namespace horsedb {
         RaftState st = _log_manager->check_consistency();
         if (!st.ok()) 
         {
+            //日志index不是从1开始,有缺失了,退出程序?
             TLOGERROR_RAFT(  "node " << _group_id << ":" << _server_id
                     << " is initialized with inconsitency log: "+  st.msg()<<endl);
             return -1;
@@ -413,14 +446,15 @@ namespace horsedb {
         // if have log using conf in log, else using conf in options
         if (_log_manager->last_log_index() > 0) 
         {
-            _log_manager->check_and_set_configuration(&_conf);
+            //todo //_log_manager->check_and_set_configuration(&_conf);
+            _conf.conf = _options.initial_conf;
         } 
         else 
         {
             _conf.conf = _options.initial_conf;
         }
 
-        initProxy();
+        
 
         // init replicator
         ReplicatorGroupOptions rg_options;
@@ -431,7 +465,10 @@ namespace horsedb {
         rg_options.node = this;
         //rg_options.snapshot_throttle = _options.snapshot_throttle? _options.snapshot_throttle->get(): NULL;
         //rg_options.snapshot_storage = _snapshot_executor? _snapshot_executor->snapshot_storage(): NULL;
-        _replicator_group.init(NodeId(_group_id, _server_id), rg_options);
+        _replicator_group= ReplicatorGroup::getInstance();
+        _replicator_group->init(NodeId(_group_id, _server_id), rg_options);
+
+        initProxy();
 
         // set state to follower
         _state = STATE_FOLLOWER;
@@ -477,6 +514,7 @@ namespace horsedb {
 
     void NodeImpl::reset_leader_id(const PeerId& new_leader_id,  const RaftState& status) 
     {
+        TLOGINFO_RAFT("new_leader_id:"<<new_leader_id <<endl)
         if (new_leader_id.is_empty()) 
         {
             if (!_leader_id.is_empty() && _state > STATE_TRANSFERRING) 
@@ -507,7 +545,7 @@ namespace horsedb {
         } 
         else 
         {
-            _log_storage = LogStorage::create(G_LogStorageType);
+            _log_storage = LogStorage::create(G_LogStorageType,_options.dbBase);
         }
         if (!_log_storage) 
         {
@@ -516,6 +554,7 @@ namespace horsedb {
             return -1;
         }
         _log_manager = new LogManager();
+        TLOGINFO_RAFT( " init _log_manager " <<endl);
         LogManagerOptions log_manager_options;
         log_manager_options.log_storage = _log_storage;
         log_manager_options.configuration_manager = _config_manager;
@@ -527,6 +566,8 @@ namespace horsedb {
         //todo init VoteInfoMeta info in _log_storage->init  ?
         // get term and votedfor
         int iRet = _log_storage->get_term_and_votedfor(&_current_term, &_voted_id, _v_group_id);
+        TLOGINFO_RAFT( "node " << _group_id << ":" << _server_id
+                        << ", _voted_id:"<<_voted_id<<endl)
         if (iRet!=0) 
         {
             TLOGERROR_RAFT( "node " << _group_id << ":" << _server_id
@@ -608,6 +649,11 @@ namespace horsedb {
 
 
 
+    //可能在以下线程执行 
+    //主线程
+    //响应异步处理线程
+    //选举超时线程
+    //心跳超时线程
     void NodeImpl::elect_self() 
     {
         TLOGINFO_RAFT("node " << _group_id << ":" << _server_id << " term " << _current_term << " start vote and grant vote self"<<endl);
@@ -620,8 +666,8 @@ namespace horsedb {
         if (_state == STATE_FOLLOWER) 
         {
            TLOGINFO_RAFT( "node " << _group_id << ":" << _server_id  << " term " << _current_term << " stop election_timer"<<endl);
-           cout<<"_election_timer.stopTimer()"<<endl;
-            _election_timer.stopTimer();
+           TLOGINFO_RAFT("node " << _group_id << ":" << _server_id <<",_election_timer.stopTimer"<<endl);
+           _election_timer.stopTimer();
         }
         // reset leader_id before vote
         PeerId empty_id;
@@ -637,7 +683,7 @@ namespace horsedb {
         TLOGINFO_RAFT( "node " << _group_id << ":" << _server_id<< " term " << _current_term << " start vote_timer"<<endl);
 
         _vote_timer.startTimer();//起一个定时线程如果时间到了但未选到自己，继续执行elect_self，自己变为主后stop
-        _vote_timer.postRepeated(1000,1000,NodeImpl::handle_vote_timeout,this);
+        _vote_timer.postRepeated(3000,false,NodeImpl::handle_vote_timeout,this);
 
         _pre_vote_ctx.reset(this);//stop_grant_self_timer
         _vote_ctx.init(this);
@@ -687,6 +733,7 @@ namespace horsedb {
             tRequestVoteReq.term=_current_term;
             tRequestVoteReq.lastLogIndex=last_log_id.index;
             tRequestVoteReq.lastLogTerm=last_log_id.term;
+            tRequestVoteReq.ctxVersion =_vote_ctx.version();
 
             proxy->async_requestVote(callback,tRequestVoteReq);
             
@@ -695,8 +742,8 @@ namespace horsedb {
         //TODO: outof lock
         //选举信息落地,重启的时候需要读取
 
-        if (_log_storage->set_term_and_votedfor(_current_term, _server_id, _v_group_id)!=0)
         {
+        if (_log_storage->set_term_and_votedfor(_current_term, _server_id, _v_group_id)!=0)
             TLOGERROR_RAFT( "node " << _group_id << ":" << _server_id
                    << " fail to set_term_and_votedfor itself when elect_self"<<endl)
                    _voted_id.reset(); 
@@ -729,7 +776,7 @@ namespace horsedb {
         _state = STATE_LEADER;
         // cancel candidate vote timer
         cout<<"become_leader(),cancel candidate vote timer:_vote_timer.stopTimer()"<<endl;
-        if (_vote_timer.isTerminate())
+        if (!_vote_timer.isTerminate())
         {
            _vote_timer.stopTimer();
         }
@@ -740,7 +787,7 @@ namespace horsedb {
         
         _leader_id = _server_id;
 
-        _replicator_group.reset_term(_current_term);
+        _replicator_group->reset_term(_current_term);
         _follower_lease.reset();
         _leader_lease.on_leader_start(_current_term);
 
@@ -759,9 +806,9 @@ namespace horsedb {
                 continue;
             }
 
-            TLOGINFO_RAFT("node " << _group_id << ":" << _server_id << " term " << _current_term  << " add replicator " << *iter);
+            TLOGINFO_RAFT("node " << _group_id << ":" << _server_id << " term " << _current_term  << " ,start replicator " << *iter);
             //TODO: check return code
-            _replicator_group.start_replicator(*iter);
+            _replicator_group->start_replicator(*iter);
         }
 
         // init commit manager
@@ -777,9 +824,19 @@ namespace horsedb {
 
         _conf_ctx.flush(_conf.conf, _conf.old_conf);
         _stepdown_timer.startTimer();
-        _stepdown_timer.postRepeated(1000,1000,NodeImpl::check_dead_nodes,this);
+        _stepdown_timer.postRepeated(2000,false,NodeImpl::check_dead_nodes,this);
 
-        _pAsyncLogThread =new AsyncLogThread(10000);
+        if (!_pAsyncLogThread)
+        {
+            _pAsyncLogThread =new AsyncLogThread(10000,this);
+        }
+        else
+        {
+            _pAsyncLogThread->start();
+        }
+        
+        
+        
 
 
         
@@ -787,6 +844,16 @@ namespace horsedb {
 
     void NodeImpl::apply(const Task& task)
     {
+        //只要主才能进行此操作
+        if (_state!=STATE_LEADER)
+        {
+            TLOGERROR_RAFT( "node " << node_id()
+                        << " can not  apply "
+                        << " while state=" << state2str(_state)
+                        << " and current_term=" << _current_term<<endl);
+            return ;
+        }
+        
         for (size_t i = 0; i < task._vLogEntry.size(); i++)
         {
             _pAsyncLogThread->push_back(*const_cast<LogEntryContext*>(&task._vLogEntry[i]));
@@ -850,7 +917,7 @@ namespace horsedb {
                 continue;
             }
 
-            int64_t timestamp = _replicator_group.last_rpc_send_timestamp(peers[i]);
+            int64_t timestamp = _replicator_group->last_rpc_send_timestamp(peers[i]);
             last_rpc_send_timestamps.push_back(timestamp);
             std::push_heap(last_rpc_send_timestamps.begin(), last_rpc_send_timestamps.end(), compare);
             if (last_rpc_send_timestamps.size() > peers.size() / 2) 
@@ -884,7 +951,7 @@ namespace horsedb {
                 continue;
             }
 
-            if (TNOWMS - node->_replicator_group.last_rpc_send_timestamp(peers[i]) <= node->_options.election_timeout_ms) 
+            if (TNOWMS - node->_replicator_group->last_rpc_send_timestamp(peers[i]) <= node->_options.election_timeout_ms) 
             {
                 ++alive_count;
                 continue;
@@ -918,7 +985,7 @@ namespace horsedb {
                     continue;
                 }
 
-                if (TNOWMS - node->_replicator_group.last_rpc_send_timestamp(peers[i]) <= node->_options.election_timeout_ms) 
+                if (TNOWMS - node->_replicator_group->last_rpc_send_timestamp(peers[i]) <= node->_options.election_timeout_ms) 
                 {
                     ++alive_count;
                     continue;
@@ -1033,6 +1100,7 @@ namespace horsedb {
             tRequestVoteReq.term=_current_term + 1;
             tRequestVoteReq.lastLogIndex=last_log_id.index;
             tRequestVoteReq.lastLogTerm=last_log_id.term;
+            tRequestVoteReq.ctxVersion =_pre_vote_ctx.version();
 
             proxy->async_preVote(callback,tRequestVoteReq);
             
@@ -1116,13 +1184,15 @@ void NodeImpl::unsafe_apply_configuration(const Configuration& new_conf,
     _log_manager->check_and_set_configuration(&_conf);
 }
 
+
+    //定时检查一下leader是否心跳超时,如果超时则发起preVote
     void NodeImpl::handle_election_timeout( NodeImpl* node)
     {
-        cout<<"handle_election_timeout 1"<<endl;
+        //cout<<"handle_election_timeout 1"<<endl;
         std::unique_lock<std::mutex> lck(node->_mutex);
-        cout<<"handle_election_timeout 1"<<endl;
+        //cout<<"handle_election_timeout 1"<<endl;
 
-        TLOGINFO_RAFT(  "in  handle_election_timeout " <<endl );
+        TLOGINFO_RAFT(  "in  handle_election_timeout ,i am "<< state2str(node->_state) <<endl );
         // check state
         if (node->_state != STATE_FOLLOWER) 
         {
@@ -1141,6 +1211,7 @@ void NodeImpl::unsafe_apply_configuration(const Configuration& new_conf,
         // Reset leader as the leader is uncerntain on election timeout.
         PeerId empty_id;
         RaftState status(ERAFTTIMEDOUT, "Lost connection from leader "+node->_leader_id.to_string());
+        TLOGINFO_RAFT(  "Lost connection from leader "<<node->_leader_id <<endl );
         node->reset_leader_id(empty_id, status);
 
         //已经超时了,重新发起选举
@@ -1152,15 +1223,15 @@ void NodeImpl::unsafe_apply_configuration(const Configuration& new_conf,
 
     int NodeImpl::handle_pre_vote_request(const RequestVoteReq& request, RequestVoteRes& response) 
     {
-        cout<<"handle_pre_vote_request 1"<<endl;
-        std::unique_lock<std::mutex> lck(_mutex);
-        cout<<"handle_pre_vote_request 1"<<endl;
+        //cout<<"handle_pre_vote_request 1"<<endl;
+        //std::unique_lock<std::mutex> lck(_mutex);
+        //cout<<"handle_pre_vote_request 1"<<endl;
 
         if (!is_active_state(_state)) 
         {
             const int64_t saved_current_term = _current_term;
             const State saved_state = _state;
-            lck.unlock();
+            //lck.unlock();
             TLOGWARN_RAFT(  "node " << _group_id << ":" << _server_id 
                         << " is not in active state " << "current_term " 
                         << saved_current_term
@@ -1192,9 +1263,9 @@ void NodeImpl::unsafe_apply_configuration(const Configuration& new_conf,
             }
 
             // get last_log_id outof node mutex
-            lck.unlock();
+            //lck.unlock();
             LogId last_log_id = _log_manager->last_log_id(true);
-            lck.lock();
+            //lck.lock();
             // pre_vote not need ABA check after unlock&lock
 
             granted = LogId(request.lastLogIndex, request.lastLogTerm)>= last_log_id?true:false;
@@ -1209,8 +1280,131 @@ void NodeImpl::unsafe_apply_configuration(const Configuration& new_conf,
 
         response.term= _current_term;
         response.isVoteGranted=granted;
+        response.peerID=request.peerID;
         return 0;
     }
+
+    void NodeImpl::handle_pre_vote_response(const RequestVoteReq& request,const RequestVoteRes& response) 
+    {
+        //std::unique_lock<std::mutex> lck(_mutex);
+
+        if (request.ctxVersion != _pre_vote_ctx.version()) 
+        {
+            TLOGWARN_RAFT(  "node " << _group_id << ":" << _server_id
+                        << " received invalid PreVoteResponse from " << response.peerID
+                        << " ctx_version " << request.ctxVersion
+                        << "current_ctx_version " << _pre_vote_ctx.version()<<endl);
+            return;
+        }
+
+        // check state
+        if (_state != STATE_FOLLOWER) 
+        {
+            TLOGWARN_RAFT( "node " << _group_id << ":" << _server_id
+                        << " received invalid PreVoteResponse from " << response.peerID
+                        << " state not in STATE_FOLLOWER but " << state2str(_state)<<endl);
+            return;
+        }
+        // check stale response
+        //发请求时的任期是否跟目前的任期一致,不一致忽略本次响应.详细请看 pre_vote 函数 
+        if (request.term-1 != _current_term) {
+            TLOGWARN_RAFT( "node " << _group_id << ":" << _server_id
+                        << " received stale PreVoteResponse from " << response.peerID
+                        << " term " << request.term-1 << " current_term " << _current_term<<endl);
+            return;
+        }
+        // check response term
+        if (response.term > _current_term) 
+        {
+            TLOGWARN_RAFT( "node " << _group_id << ":" << _server_id
+                        << " received invalid PreVoteResponse from " << response.peerID
+                        << " term " << response.term << ", expect " << _current_term<<endl);
+            RaftState status;
+            status.set_error(EHIGHERTERMRESPONSE, "Raft node receives higher term  pre_vote_response.");
+            step_down(response.term, false, status);
+            return;
+        }
+
+        TLOGINFO_RAFT( "node " << _group_id << ":" << _server_id
+                << " received PreVoteResponse from " << response.peerID
+                << " term " << response.term << " granted " << response.isVoteGranted<<endl);
+        // check if the quorum granted
+        if (response.isVoteGranted)
+        {
+            _pre_vote_ctx.grant(request.peerID);
+            if (response.peerID == _follower_lease.last_leader()) 
+            {
+                _pre_vote_ctx.grant(_server_id);
+                _pre_vote_ctx.stop_grant_self_timer(this);
+            }
+            if (_pre_vote_ctx.granted()) 
+            {
+                elect_self();
+            }
+        }
+    }
+
+    void NodeImpl::handle_request_vote_response(const RequestVoteReq& request,const RequestVoteRes& response) 
+    {
+        std::unique_lock<std::mutex> lck(_mutex);
+
+        if (request.ctxVersion != _vote_ctx.version()) 
+        {
+            TLOGWARN_RAFT(  "node " << _group_id << ":" << _server_id
+                        << " received invalid VoteResponse from " << response.peerID
+                        << " ctx_version " << request.ctxVersion
+                        << "current_ctx_version " << _vote_ctx.version()<<endl);
+            return;
+        }
+
+        // check state
+        if (_state != STATE_CANDIDATE) 
+        {
+            TLOGWARN_RAFT( "node " << _group_id << ":" << _server_id
+                        << " received invalid VoteResponse from " << response.peerID
+                        << " state not in STATE_CANDIDATE but " << state2str(_state)<<endl);
+            return;
+        }
+        // check stale response
+        //发请求时的任期是否跟目前的任期一致,不一致忽略本次响应.详细请看 elect_self 函数 
+        if (request.term != _current_term) {
+            TLOGWARN_RAFT( "node " << _group_id << ":" << _server_id
+                        << " received stale VoteResponse from " << response.peerID
+                        << " term " << request.term-1 << " current_term " << _current_term<<endl);
+            return;
+        }
+        // check response term
+        if (response.term > _current_term) 
+        {
+            TLOGWARN_RAFT( "node " << _group_id << ":" << _server_id
+                        << " received invalid VoteResponse from " << response.peerID
+                        << " term " << response.term << ", expect " << _current_term<<endl);
+            RaftState status;
+            status.set_error(EHIGHERTERMRESPONSE, "Raft node receives higher term  vote_response.");
+            step_down(response.term, false, status);
+            return;
+        }
+
+        TLOGINFO_RAFT( "node " << _group_id << ":" << _server_id
+                << " received VoteResponse from " << response.peerID
+                << " term " << response.term << " granted " << response.isVoteGranted<<endl);
+        TLOGINFO_RAFT( " _follower_lease.last_leader()= " << _follower_lease.last_leader()<<endl);
+        // check if the quorum granted
+        if (response.isVoteGranted)
+        {
+            _vote_ctx.grant(request.peerID);
+            if (request.peerID == _follower_lease.last_leader()) 
+            {
+                _vote_ctx.grant(_server_id);
+                _vote_ctx.stop_grant_self_timer(this);
+            }
+            if (_vote_ctx.granted()) 
+            {
+                become_leader();
+            }
+        }
+    }
+
 
     int NodeImpl::handle_request_vote_request(const RequestVoteReq& request, RequestVoteRes& response) 
     {
@@ -1301,33 +1495,41 @@ void NodeImpl::unsafe_apply_configuration(const Configuration& new_conf,
 
         response.term= _current_term;
         response.isVoteGranted=granted;
+        response.peerID=request.peerID;
         return 0;
     }
 
 
     void NodeImpl::check_step_down(const int64_t request_term, const PeerId& server_id) 
     {
-        if (request_term > _current_term) 
+        if (request_term > _current_term) //request_term 可能 大于 等于 _current_term
         {
             RaftState status(ENEWLEADER, "Raft node receives message from "
                     "new leader with higher term."); 
+            TLOGINFO_RAFT("RaftState:"<<status<<endl);
             step_down(request_term, false, status);
         } 
         else if (_state != STATE_FOLLOWER)
         { 
             RaftState status(ENEWLEADER, "Candidate receives message "
                     "from new leader with the same term.");
+            TLOGINFO_RAFT("RaftState:"<<status<<endl);
             step_down(request_term, false, status);
         }
         else if (_leader_id.is_empty()) 
         {
             RaftState status(ENEWLEADER, "Follower receives message "
                     "from new leader with the same term.");
-            step_down(request_term, false, status); 
+            TLOGINFO_RAFT("RaftState:"<<status<<endl);
+            //follwer第一次接受心跳时 leader_id为空
+            //如果这里step_dow会导致本follwer加大任期又开始选举,而且本folower很容易选上主,再发心跳给原来的旧主.
+            //旧主接收到prevote,vote选举请求或者心跳后发现任期比自己大,又step_down发起选举，不断循环
+            //step_down(request_term, false, status); 
         }
         // save current leader
         if (_leader_id.is_empty()) 
         { 
+            TLOGINFO_RAFT("_leader_id is empty,reset_leader_id:"<<server_id<<endl);
             reset_leader_id(server_id, RaftState());
         }
     }
@@ -1348,9 +1550,15 @@ void NodeImpl::unsafe_apply_configuration(const Configuration& new_conf,
     //follower 收到 leader 的 AppendEntriesReq
     int NodeImpl::handle_append_entries_request(const AppendEntriesReq& request, AppendEntriesRes& response) 
     {
-        cout<<"handle_append_entries_request 1"<<endl;
         std::unique_lock<std::mutex> lck(_mutex);
-        cout<<"handle_append_entries_request 1"<<endl;
+
+        TLOGINFO_RAFT(  "request.term " << request.term 
+                    << ", request.serverID=" << request.serverID
+                    << ", request.logEntries.size()=" << request.logEntries.size()
+                    << ", request.commitIndex=" << request.commitIndex
+                    << ", request.prevLogTerm=" << request.prevLogTerm
+                    << ", request.prevLogIndex=" << request.prevLogIndex
+                    <<endl);
 
         response.term=_current_term;
 
@@ -1385,7 +1593,7 @@ void NodeImpl::unsafe_apply_configuration(const Configuration& new_conf,
             TLOGWARN_RAFT( "node " << _group_id << ":" << _server_id
                         << " ignore stale AppendEntries from " << request.serverID
                         << " in term " << request.term
-                        << " current_term " << saved_current_term);
+                        << " current_term " << saved_current_term<<endl);
             response.isSuccess=false;
             response.term= saved_current_term;
             return -1;
@@ -1393,7 +1601,9 @@ void NodeImpl::unsafe_apply_configuration(const Configuration& new_conf,
 
         //request.term >= _current_term
         //正常情况下,选举结束后,大家任期一样,如果request.term > 本地的任期，需要更新本地任期
-        check_step_down(request.term, server_id);   
+        check_step_down(request.term, server_id); 
+        TLOGWARN_RAFT( "server_id " << server_id << ",_leader_id " << _leader_id
+                        <<endl);  
      
         if (server_id != _leader_id) 
         {

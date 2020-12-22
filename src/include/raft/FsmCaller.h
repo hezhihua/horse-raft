@@ -81,7 +81,7 @@ public:
 
 private:
     IteratorImpl(StateMachine* sm, LogManager* lm, 
-                 std::vector<ClientContext> &vContext,
+                 std::vector<ClientContext*> &vContext,
                  int64_t first_closure_index,
                  int64_t last_applied_index,
                  int64_t committed_index,
@@ -90,7 +90,7 @@ private:
 friend class FSMCaller;
     StateMachine* _sm;
     LogManager* _lm;
-    std::vector<ClientContext> _vClientContext;
+    std::vector<ClientContext*> _vClientContext;
     int64_t _first_closure_index;
     int64_t _cur_index;
     int64_t _committed_index;
@@ -122,6 +122,7 @@ struct FSMCallerOptions {
 class  FSMCaller : public TC_Thread, public TC_ThreadLock{
 public:
     FSMCaller(size_t iQueueCap);
+    FSMCaller(size_t iQueueCap,NodeImpl* node);
      ~FSMCaller();
 
      enum TaskType {

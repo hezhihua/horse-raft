@@ -77,6 +77,11 @@ bool LogManager::get_entry_from_memory(const int64_t index,LogEntry &entry)
     {
         int64_t first_index = _logs_in_memory.front().index;
         int64_t last_index = _logs_in_memory.back().index;
+        TLOGINFO_RAFT("index="<<index
+                 <<",first_index="<<first_index
+                 <<",last_index="<<last_index
+                 <<",_logs_in_memory.size()"<<_logs_in_memory.size()
+                 <<endl);
  
         if (last_index - first_index + 1!= _logs_in_memory.size())
         {
@@ -123,6 +128,10 @@ int64_t LogManager::unsafe_get_term(const int64_t index)
 int64_t LogManager::get_term(const int64_t index) 
 {
     std::unique_lock<std::mutex> lck(_mutex);
+    TLOGINFO_RAFT("index="<<index
+                 <<",_last_log_index="<<_last_log_index
+                 <<",_first_log_index="<<_first_log_index
+                 <<endl);
     if (index == 0) 
     {
         return 0;
@@ -138,6 +147,9 @@ int64_t LogManager::get_term(const int64_t index)
 
     LogEntry entry;
     bool bret = get_entry_from_memory(index,entry);
+    TLOGINFO_RAFT("bret="<<bret
+                 <<",entry.term="<<entry.term
+                 <<endl);
     if (bret) 
     {
         return entry.term;
@@ -451,5 +463,18 @@ void LogManager::set_disk_id(const LogId& disk_id)
     {
         std::unique_lock<std::mutex> lck(_mutex);
         return _first_log_index;
+    }
+
+    void LogManager::set_applied_id(const LogId& applied_id) 
+    {
+        std::unique_lock<std::mutex> lck(_mutex);  // Race with set_disk_id
+        if (applied_id < _applied_id) 
+        {
+            return;
+        }
+        _applied_id = applied_id;
+        LogId clear_id = std::min(_disk_id, _applied_id);
+        lck.unlock();
+        return clear_memory_logs(clear_id);
     }
 }

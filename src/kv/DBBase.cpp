@@ -82,7 +82,7 @@ namespace horsedb {
         
     }
 
-    bool DBBase::Create(const string&dbname)
+    bool DBBase::Create(const string&dbname,const map<string,string> &msession)
     {
         if (!DBExist(dbname))
         {
@@ -111,7 +111,7 @@ namespace horsedb {
     }
 
 
-    bool DBBase::Put(const string&key,const string &value,const string& db)
+    bool DBBase::Put(const string&key,const string &value,const string& db,const map<string,string> &msession)
     {
         if (!DBExist(db))
         {
@@ -123,7 +123,7 @@ namespace horsedb {
         return s.ok();
 
     }
-    bool DBBase::Put2WriteBatch(rocksdb::WriteBatch &updates,const string&key,const string &value,const string& db)
+    bool DBBase::Put2WriteBatch(rocksdb::WriteBatch &updates,const string&key,const string &value,const string& db,const map<string,string> &msession)
     {
         if (!DBExist(db))
         {
@@ -136,7 +136,7 @@ namespace horsedb {
 
     }
 
-    bool DBBase::WriteBatch(rocksdb::WriteBatch &updates,const string& db)
+    bool DBBase::WriteBatch(rocksdb::WriteBatch &updates,const string& db,const map<string,string> &msession)
     {
         if (!DBExist(db))
         {
@@ -247,12 +247,12 @@ namespace horsedb {
         
     }
 
-    bool DBBase::DeleteRange(const string& begin_key, const string& end_key,const string& dbname)
+    bool DBBase::DeleteRange(const string& begin_key, const string& end_key,const string& dbname,const map<string,string> &msession)
     {
         Status st = _db->DeleteRange(_WriteOptions,_mhandles[dbname],begin_key,end_key);
         return st.ok();
     }
-    bool DBBase::Delete(const string& key, const string& dbname)
+    bool DBBase::Delete(const string& key, const string& dbname,const map<string,string> &msession)
     {
         Status st = _db->Delete(_WriteOptions,_mhandles[dbname],key);
         return st.ok();
@@ -298,6 +298,45 @@ namespace horsedb {
         }
 
         return true;
+        
+    }
+
+    bool DBBase::PreKeyGetFirst(const string&prekey, string &firstKey, string &firstValue,const string& dbname)
+    {
+        if (!DBExist(dbname))
+        {
+            return false;
+        }
+         cout <<" prekey:" << prekey<< ", dbname:" << dbname<<endl;
+         _readOptions.total_order_seek = true;
+        //  uint64_t count=0;
+        //  _db->GetIntProperty(_mhandles[dbname], "rocksdb.estimate-num-keys",&count) ;
+        //  cout<<"count=" << count <<endl;
+
+        std::unique_ptr<Iterator> iter(_db->NewIterator(_readOptions,_mhandles[dbname]));
+        Status st = iter->status();
+        if (!st.ok()) 
+        {
+            cout<<"Iterator error." << st.ToString()<<endl;
+            return false;
+        }
+        // std::string stats;
+        // bool pStats=false;
+        // if (pStats && _db->GetProperty("rocksdb.stats", &stats)) {
+        //     cout <<stats<<endl;
+        // }
+
+        for (iter->Seek(prekey); iter->Valid() && iter->key().starts_with(prekey) ; iter->Next()) 
+        {   
+            cout << iter->key().ToString()<<"," << iter->value().ToString() << endl;
+
+            firstValue=iter->value().ToString();
+            firstKey=iter->key().ToString();
+            return true;
+            
+        }
+
+        return false;
         
     }
 

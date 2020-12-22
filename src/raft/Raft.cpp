@@ -23,9 +23,9 @@ namespace horsedb{
 
     std::ostream& operator<<(std::ostream& os, const RaftState& tRaftState) 
     {
-            os << "_state=" << tRaftState.code()
+          return  os << "{_state=" << tRaftState.code()
             << ", _msg=" << tRaftState.msg()
             << "}";
-            return os;
+            
     }
 }

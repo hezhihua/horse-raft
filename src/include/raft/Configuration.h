@@ -41,6 +41,30 @@ struct PeerId {
     PeerId(const EndpointInfo &addr, int idx) : _addr(addr), _idx(idx) {}
     PeerId(const std::string& str) 
     { 
+        string sResultStr=adapAddr(str);
+        
+        
+        int ret= parse(sResultStr);
+        assert(ret==0) ;
+    }
+    PeerId(const PeerId& id) : _addr(id._addr), _idx(id._idx) {}
+
+    void reset() {
+        _addr.getEndpoint().setHost("0.0.0.0");
+        _addr.getEndpoint().setPort(0);
+        _idx = 0;
+    }
+
+    string desc(){return _addr.desc();}
+
+    bool is_empty() const 
+    {
+
+        return (_addr.host()=="0.0.0.0"&&_addr.port()==0 && _idx==0);
+    }
+
+    string adapAddr(const std::string& str)
+    {
         string sResultStr;
         vector<string> vIPInfo=TC_Common::sepstr<string> (str,":");//0.0.0.0 : 8085
         if (vIPInfo.size()==2)
@@ -51,24 +75,7 @@ struct PeerId {
         {
             sResultStr=str;
         }
-        
-        
-        int ret= parse(sResultStr);
-        assert(ret==0) ;
-    }
-    PeerId(const PeerId& id) : _addr(id._addr), _idx(id._idx) {}
-
-    void reset() {
-        _addr.getEndpoint().setHost("");
-        _addr.getEndpoint().setPort(0);
-        _idx = 0;
-    }
-
-    string desc(){return _addr.desc();}
-
-    bool is_empty() const 
-    {
-        return (_addr.host().empty() && _addr.port() == 0 && _idx == 0);
+        return sResultStr;
     }
 
     int parse(const std::string& str) 
@@ -76,7 +83,8 @@ struct PeerId {
         reset();
         try
         {
-            TC_Endpoint ep(str);
+            string sResultStr=adapAddr(str);
+            TC_Endpoint ep(sResultStr);
 
             EndpointInfo epi(ep.getHost(), ep.getPort(), ep.getType(), ep.getGrid(), "", ep.getQos(), ep.getWeight(), ep.getWeightType(), ep.getAuthType());
             _addr=epi;

@@ -32,10 +32,18 @@ namespace horsedb {
 
         //todo 设置选举信息
 
+        _first_log_index.store(1);
+        _last_log_index.store(0);
+
         if (first_log_index_from_db()<0)
         {
-            _first_log_index.store(1);
-            _last_log_index.store(0);
+            TLOGERROR_RAFT("first_log_index_from_db error"
+                 <<endl);
+        }
+        if (last_log_index_from_db()<0)
+        {
+            TLOGERROR_RAFT("last_log_index_from_db error"
+                 <<endl);
         }
         
 
@@ -59,7 +67,7 @@ namespace horsedb {
         try
         {
             string key,value;
-            if (_dbbase->GetFirstKV(key,value,_sDBName))
+            if (_dbbase->PreKeyGetFirst("logindex",key,value,_sDBName))
             {
                 LogEntry tLogEntry;
                 vector<char> valueBuff;
@@ -121,7 +129,7 @@ namespace horsedb {
 
     bool RocksDBStorage::get_entry(const int64_t index,LogEntry &tLogEntry)
     {
-        string key=getLogIndexKey(tLogEntry.index);
+        string key=getLogIndexKey(index);
 
         string value;
 
@@ -135,6 +143,10 @@ namespace horsedb {
                 horsedb::TarsInputStream<horsedb::BufferReader> _is;
                 _is.setBuffer(valueBuff);
                 tLogEntry.readFrom(_is);
+
+                TLOGINFO_RAFT("tLogEntry.term="<<tLogEntry.term
+                 <<"tLogEntry.index="<<tLogEntry.index
+                 <<endl);
 
                 return true;
             }
@@ -190,11 +202,12 @@ namespace horsedb {
 
     string RocksDBStorage::getLogIndexKey(int64_t lLogIndex)
     {
-
+#if 0
         string sBigLogIndex;
         TC_Common::encodeID64(lLogIndex,sBigLogIndex);
         return  _sPreKey+sBigLogIndex;
-        
+#endif
+        return   "logindex"+ TC_Common::tostr(lLogIndex); 
     }
 
 
@@ -207,6 +220,7 @@ namespace horsedb {
         for (auto &logEntry :entries)
         {
             string key=getLogIndexKey(logEntry.index);
+            TLOGINFO_RAFT( "key="<< key<<endl);
         
 
             horsedb::TarsOutputStream<horsedb::BufferWriterVector> _os;

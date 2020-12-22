@@ -67,7 +67,7 @@ public:
 
     bool is_leader() 
     {
-        std::lock_guard<std::mutex> lck(_mutex);
+        //std::lock_guard<std::mutex> lck(_mutex); //todo 锁两次死锁
         return _state == STATE_LEADER;
     }
 
@@ -140,12 +140,9 @@ public:
 
     // Closure call func
     //
-    void handle_pre_vote_response(const PeerId& peer_id, const int64_t term,
-                                  const int64_t ctx_version,
-                                  const RequestVoteRes& response);
-    void handle_request_vote_response(const PeerId& peer_id, const int64_t term,
-                                      const int64_t ctx_version,
-                                      const RequestVoteRes& response);
+    void handle_pre_vote_response(const RequestVoteReq& request,const RequestVoteRes& response) ;
+    void handle_request_vote_response(const RequestVoteReq& request,const RequestVoteRes& response);
+
     void on_caughtup(const PeerId& peer, int64_t term, 
                      int64_t version, int st);
     // other func
@@ -361,7 +358,7 @@ private:
         void stop_grant_self_timer(NodeImpl* node);
         void reset(NodeImpl* node);
     private:
-        TC_Timer _timer;
+        TC_Timer _timer;//选自己为主定时线程
         Ballot _ballot;
         // Each time the vote ctx restarted, increase the version to avoid
         // ABA problem.
@@ -411,10 +408,10 @@ public:
     FSMCaller* _fsm_caller;
     BallotBox* _ballot_box;
 
-    ReplicatorGroup _replicator_group;
+    ReplicatorGroup *_replicator_group;
 
 
-    TC_Timer _election_timer;//检测leader心跳是否超时 线程
+    TC_Timer _election_timer;//检测leader心跳是否超时,超时并发起选举 线程
     TC_Timer _vote_timer;//检测选举是否超时
     TC_Timer _stepdown_timer;
     TC_Timer _snapshot_timer;

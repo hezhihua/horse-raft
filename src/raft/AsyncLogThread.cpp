@@ -25,10 +25,15 @@ AsyncLogThread::AsyncLogThread(size_t iQueueCap)
 : _terminate(false), _iQueueCap(iQueueCap)
 {
 	 _logEntryContextQueue = new TC_CasQueue<LogEntryContext>();
-
 	 
 	start();
      
+}
+AsyncLogThread::AsyncLogThread(size_t iQueueCap,NodeImpl *node): _terminate(false), _iQueueCap(iQueueCap),_node(node)
+{
+	_logEntryContextQueue = new TC_CasQueue<LogEntryContext>();
+		
+	start();
 }
 
 AsyncLogThread::~AsyncLogThread()
@@ -93,7 +98,7 @@ void AsyncLogThread::run()
 			time2process();
 			TC_ThreadLock::Lock lock(*this);
 			//一个请求包被处理要等待的最大时间
-	        timedWait(3000);//200		
+	        timedWait(100);//200		
 		}
     }
 }
@@ -113,7 +118,10 @@ bool AsyncLogThread::batchWrite()
 		ReplicLogTask tReplicLogTask;
 		tReplicLogTask._ReplicType=REPLIC_REQDATA;
 		tReplicLogTask._batchLog=_batchLog;
-		item.second->push_back(tReplicLogTask);
+		if (!item.second->isTerminnate())
+		{
+			item.second->push_back(tReplicLogTask);
+		}
 	}
 	
 	//落地
@@ -121,7 +129,7 @@ bool AsyncLogThread::batchWrite()
 	
 	
 	//投票给自己
-	_node->_ballot_box->commit_at(1,_batchLog.size(),_server_id);
+	_node->_ballot_box->commit_at(_batchLog[0].index,_batchLog[0].index+_batchLog.size()-1,_node->_server_id);
 
 	vector<LogEntry>().swap(_batchLog);  
 
@@ -138,9 +146,9 @@ void AsyncLogThread::process(LogEntryContext &log)
 	
 		_batchLog.push_back(log._LogEntry);
 		//一次请求需要一次投票
-		_node->_ballot_box->append_pending_task(_node->_conf.conf,_node->_conf.old_conf.empty() ? NULL : &_node->_conf.old_conf,*log._ClientContext);
+		_node->_ballot_box->append_pending_task(_node->_conf.conf,_node->_conf.old_conf.empty() ? NULL : &_node->_conf.old_conf,log._ClientContext);
 
-		if (_batchLog.size()==20)
+		if (_batchLog.size()==20||TNOWMS-_last_time_processed>100)
 		{
 			batchWrite();
 		}
@@ -158,8 +166,7 @@ void AsyncLogThread::process(LogEntryContext &log)
 
 void AsyncLogThread::time2process()
 {
-	cout<<"[AsyncLogThread] time2process." << endl;
-	TLOGINFO_RAFT("[AsyncLogThread] time2process." << endl);
+	//TLOGINFO_RAFT("[AsyncLogThread] time2process." << endl);
 
 	try
 	{

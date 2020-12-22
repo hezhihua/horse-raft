@@ -7,10 +7,11 @@ using namespace std;
 
 namespace horsedb {
 
+//server interface
  horsedb::Int32 RaftDB::appendEntries(const horsedb::AppendEntriesReq & tReq,horsedb::AppendEntriesRes &tRes,horsedb::TarsCurrentPtr current) 
  {
     int iRet=-1;
-      cout<<"appendEntries,tReq.serverID="<<tReq.serverID<< ",request.peerID="<<tReq.peerID<<endl;
+      cout<<"recv appendEntries,tReq.serverID="<<tReq.serverID<< ",request.peerID="<<tReq.peerID<<endl;
       try
       {
          do
@@ -47,6 +48,7 @@ namespace horsedb {
   horsedb::Int32 RaftDB::requestVote(const horsedb::RequestVoteReq & tReq,horsedb::RequestVoteRes &tRes,horsedb::TarsCurrentPtr current) 
   {
       int iRet=-1;
+      cout<<"requestVote,tReq.serverID="<<tReq.serverID<< ",request.peerID="<<tReq.peerID<<endl;
       try
       {
          do
@@ -91,6 +93,7 @@ horsedb::Int32  RaftDB::installSnapshot(const horsedb::InstallSnapshotReq &tReq,
  {
 
       int iRet=-1;
+      cout<<"preVote,tReq.serverID="<<tReq.serverID<< ",request.peerID="<<tReq.peerID<<endl;
       try
       {
          do
@@ -130,7 +133,7 @@ horsedb::Int32  RaftDB::timeoutNow(const horsedb::TimeoutNowReq &tReq, horsedb::
 
 }
 
-
+//client callback
 // int RaftDBPrxCallback::onDispatch(horsedb::ReqMessagePtr msg)
 // {
 //    static ::std::string __RaftDB_all[]=

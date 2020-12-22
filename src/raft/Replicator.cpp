@@ -26,7 +26,7 @@ namespace horsedb{
         for (auto &item :_rMap)
         {
             item.second->terminate();
-            delete item.second;
+            //delete item.second;
         }
 
         return 0;
@@ -49,20 +49,29 @@ namespace horsedb{
 
     int ReplicatorGroup::start_replicator(const PeerId& peer) 
     {
-        TLOGWARN_RAFT( "_common_options.term " <<_common_options.term<<endl );
+        TLOGWARN_RAFT( "_common_options.term " <<_common_options.term <<",peer="<< peer <<endl );
         if (0!= _common_options.term)
         {
             TLOGWARN_RAFT( "0!= _common_options.term "<<endl );
         }
-        
-        if (_rMap.find(peer) != _rMap.end()) 
+
+        Replicator *replicator=nullptr;
+        auto it =_rMap.find(peer);
+        if (it != _rMap.end()) 
         {
+            replicator=it->second;
+            
+            replicator->_update_last_rpc_send_timestamp(TNOWMS);
+
+            replicator->sendEmptyEntries(false);
+            replicator->start();
+
             return 0;
         }
         ReplicatorOptions options = _common_options;
         options.peer_id = peer;
 
-        Replicator *replicator= new Replicator(10000);
+        replicator= new Replicator(10000);
         
         replicator->init(options);
 
@@ -71,6 +80,8 @@ namespace horsedb{
         replicator->_update_last_rpc_send_timestamp(TNOWMS);
 
         replicator->sendEmptyEntries(false);
+
+        replicator->start();
 
         return 0;
     }
@@ -174,16 +185,17 @@ namespace horsedb{
     : _terminate(false), _iQueueCap(iQueueCap)
     {
         _replicLogTaskQueue = new TC_CasQueue<ReplicLogTask>();
+        _flying_append_entries_size=0;
 
         
-        start();
+        //start();
         
     }
 
     void Replicator::terminate()
     {
         
-            TC_ThreadLock::Lock lock(*this);
+            //TC_ThreadLock::Lock lock(*this);
 
             _terminate = true;
 
@@ -249,8 +261,33 @@ namespace horsedb{
 
     }
 
+    string replicType2str(ReplicType replicType)
+    {
+        if (replicType==REPLIC_REQDATA)
+        {
+            return "REPLIC_REQDATA";
+        }else if (replicType==REPLIC_DATA)
+        {
+            return "REPLIC_DATA";
+        }
+        else if (replicType==REPLIC_EMPTY)
+        {
+            return "REPLIC_EMPTY";
+        }else if (replicType==REPLIC_HEART)
+        {
+            return "REPLIC_HEART";
+        }else
+        {
+            return "UNKOWN";
+        }
+        
+        
+        
+    }
+
     void Replicator::push_back(ReplicLogTask &task)
     {
+        TLOGINFO_RAFT("_ReplicType:" << replicType2str(task._ReplicType) <<endl)
         if(_replicLogTaskQueue->size() >= _iQueueCap)
         {
             TLOGERROR_RAFT("[Replicator::push_back] async_queue full:" << _replicLogTaskQueue->size() << ">=" << _iQueueCap << endl);
@@ -270,7 +307,7 @@ namespace horsedb{
     void Replicator::run()
     {
         //客户端请求来了,收到AsyncLogThread的通知马上发送日志
-        //远程节点响应回来了,收到AsyncProcThread的通知马上发送日志
+        //远程节点响应回来了,收到异步线程的通知马上发送日志
         //定时检测  log_manager._last_log_index 看是否有新的日志要发送,有则继续发送日志,没有则等待超时发送心跳
         while (!_terminate)
         {
@@ -285,7 +322,15 @@ namespace horsedb{
                 
                 TC_ThreadLock::Lock lock(*this);
                 timedWait(2000);//200 todo 心跳时间间隔		
-                sendEmptyEntries(true);
+                //这里容易进入死循环,这里发一个心跳,异步线程收到响应后,push_back一个消息到此队列
+                //接着继续发送心跳，重复上过程.
+                //所以这里需要先判断队列是否为空
+                if (_replicLogTaskQueue->size()==0)
+                {
+                    sendEmptyEntries(true);
+                }
+                
+                
             }
         }
         
@@ -296,15 +341,15 @@ namespace horsedb{
     {
         if (task._ReplicType==REPLIC_DATA)
         {
-            sendEntries();
+            sendEntries();//发送本地数据
         }
         else if (task._ReplicType==REPLIC_EMPTY)
         {
-            sendEmptyEntries(false);
+            sendEmptyEntries(false);//发送心跳
         }
         else if (task._ReplicType==REPLIC_REQDATA)
         {
-            sendEntries(task._batchLog);
+            sendEntries(task._batchLog);//发送请求数据
         }
         
  
@@ -316,6 +361,7 @@ namespace horsedb{
     {
         try
         {
+            TLOGWARN_RAFT(  "is_heartbeat " << is_heartbeat<<endl);
             int64_t prev_log_index=_next_index-1;
             const int64_t prev_log_term = _options.log_manager->get_term(prev_log_index);
             if (prev_log_term == 0 &&  prev_log_index!= 0) 
@@ -423,6 +469,7 @@ namespace horsedb{
         
     }
 
+    //发送本地数据
     void Replicator::sendEntries()
     {
 
@@ -444,6 +491,7 @@ namespace horsedb{
 
             int64_t prev_log_index=_next_index-1;
             const int64_t prev_log_term = _options.log_manager->get_term(prev_log_index);
+            TLOGINFO_RAFT(  "prev_log_index " << prev_log_index<< ", prev_log_term=" << prev_log_term <<endl);
             if (prev_log_term == 0 &&  prev_log_index!= 0) 
             {
                 if (!is_heartbeat) 
@@ -492,11 +540,14 @@ namespace horsedb{
                 }
                 tReq.logEntries.push_back(tLogEntry);
             }
+            TLOGINFO_RAFT(  "tReq.logEntries.size()=" << tReq.logEntries.size()  <<endl);
 
             if (tReq.logEntries.size() == 0) 
             {
+                TLOGINFO_RAFT(  "tReq.logEntries.size()=0,no send"  <<endl);
                 if (_next_index < _options.log_manager->first_log_index()) 
                 {
+                    TLOGINFO_RAFT(  "_next_index " << _next_index<< ", log_manager first_log_index=" << _options.log_manager->first_log_index() <<endl);
                     _reset_next_index();
                     return _install_snapshot();
                 }
@@ -511,8 +562,10 @@ namespace horsedb{
                     }
 
                 }
+                //本地数据已经追平了，不再发数据
                 return ;
             }
+            //本地数据未追平则继续发
 
             _append_entries_in_fly.push_back(FlyingAppendEntriesRpc(_next_index,tReq.logEntries.size()));
             _append_entries_counter++;

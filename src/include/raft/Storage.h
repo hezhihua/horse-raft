@@ -66,7 +66,7 @@ public:
     virtual int get_term_and_votedfor(int64_t* term, PeerId* peer_id, const VersionedGroupId& group) = 0;
 
 
-    static  LogStorage* create(const string& type);
+    static  LogStorage* create(const string& type, shared_ptr<DBBase> &pDB);
 
     
 };

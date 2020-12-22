@@ -28,15 +28,19 @@ struct LogId {
     int64_t term;
 };
 
+struct ClientContextOption{
+    virtual ~ClientContextOption(){} 
+};
 
 struct ClientContext{
 
-    ClientContext(const void *contextdt):_contextdt(const_cast<void *>(contextdt)){init();}
-    virtual void init(){_contextdt=nullptr;} ;
+    ClientContext(ClientContextOption* cco):_cco(cco){init();}
+    virtual void init(){_cco=nullptr;} ;
     virtual void send(){} ;
 
-    void *_contextdt;
+    ClientContextOption *_cco;
     CommandType _CommandType;
+    string _sessionid;
 };
 
 

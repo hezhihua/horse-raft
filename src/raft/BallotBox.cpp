@@ -48,6 +48,9 @@ int BallotBox::commit_at( int64_t first_log_index, int64_t last_log_index, const
     //  The cricital section is unacceptable because it 
     // blocks all the other Replicators and LogManagers
     std::unique_lock<std::mutex> lck(_mutex);
+    TLOGINFO_RAFT("_pending_index="<<_pending_index<< ", _pending_meta_queue.size()="<<_pending_meta_queue.size()
+     <<"last_log_index="<<last_log_index
+     <<  endl) ;
     if (_pending_index == 0) 
     {
         return EINVAL;
@@ -71,6 +74,8 @@ int BallotBox::commit_at( int64_t first_log_index, int64_t last_log_index, const
         if (bl.granted()) 
         {
             last_committed_index = log_index;
+            TLOGINFO_RAFT("last_committed_index="<<last_committed_index<<  endl) ;
+    
         }
     }
 
@@ -132,7 +137,7 @@ int BallotBox::reset_pending_index(int64_t new_pending_index)
     return 0;
 }
 
-int BallotBox::append_pending_task(const Configuration& conf, const Configuration* old_conf,const ClientContext &clientContext) 
+int BallotBox::append_pending_task(const Configuration& conf, const Configuration* old_conf, ClientContext *clientContext) 
 {
     Ballot bl;
     if (bl.init(conf, old_conf) != 0) 
@@ -155,7 +160,7 @@ int BallotBox::append_pending_task(const Configuration& conf, const Configuratio
     return 0;
 }
 
-int BallotBox::pop_until(int64_t index, std::vector<ClientContext> &out, int64_t *out_first_index) 
+int BallotBox::pop_until(int64_t index, std::vector<ClientContext*> &out, int64_t *out_first_index) 
 {
     out.clear();
     std::unique_lock<std::mutex> lck(_mutex);

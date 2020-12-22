@@ -37,6 +37,8 @@ public:
      * 构造函数
      */
     AsyncLogThread(size_t iQueueCap);
+    AsyncLogThread(size_t iQueueCap,NodeImpl *node);
+    
 
     /**
      * 析构函数

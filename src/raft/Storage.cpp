@@ -5,12 +5,11 @@
 
 namespace horsedb {
 
-    LogStorage* LogStorage::create(const string& type)
+    LogStorage* LogStorage::create(const string& type, shared_ptr<DBBase> &pDB)
     {
         if (type=="rocksdb")
         {
-            std::shared_ptr<DBBase> db(DBBase::getInstance());
-            return new RocksDBStorage(db,G_GroupID);
+            return new RocksDBStorage(pDB,G_GroupID);
         }
         else 
         {
