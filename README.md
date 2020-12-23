@@ -22,7 +22,7 @@ horse-raft的节点之间采用腾讯开源的tars协议来进行rpc通讯，<br
 2, Log replication and recovery  
 3, Snapshot and log compaction 
 
-目前install Snapshot还没有实现,follower追加日志暂时采用AppendEntries的方式补全日志
+目前install Snapshot还没有完全实现,follower追加日志暂时采用AppendEntries的方式补全日志
 # 编译和安装
 
 1,git clone https://github.com/hezhihua/horse-raft.git  
