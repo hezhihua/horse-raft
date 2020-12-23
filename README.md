@@ -1,6 +1,10 @@
 # horse-raft
 An  C++ implementation of RAFT consensus algorithm based on horse-rpc
 
+horse-raft的节点之间采用腾讯开源的tars协议来进行rpc通讯,腾讯开源的[tarscpp](https://github.com/TarsCloud/TarsCpp)里有不少代码是tars框架内互调的代码
+如果完全搬来做raft比较冗余,因此基于tarscpp基础上阉割了不少代码，做了个简单版的rpc代码：[horse-rpc](https://github.com/hezhihua/horse-rpc),horse-raft基于
+[horse-rpc](https://github.com/hezhihua/horse-rpc) 做节点之间的rpc调用则可.    
+
 # 依赖环境
 | 软件	 | 要求 |
 | ----- | ----- |
@@ -12,18 +16,18 @@ An  C++ implementation of RAFT consensus algorithm based on horse-rpc
 # 特性
 1, Leader election,pre-vote,vote  
 2, Log replication and recovery  
-3, Snapshot and log compaction --todo
+3, Snapshot and log compaction 
 
-
+目前install Snapshot还没有实现,follower追加日志暂时采用AppendEntries的方式补全日志
 # 编译和安装
 
 1,git clone https://github.com/hezhihua/horse-raft.git  
-2,mkdir build && cd build && cmake ..  && make 
+2,cd horse-raft && mkdir build && cd build && cmake ..  && make 
 
 
-# TODO   
+# 二期   
 1,Snapshot and log compaction     
-
+2,支持管理命令,http接口
 
 # 感谢
 Baidu开源的[braft](https://github.com/baidu/braft)
