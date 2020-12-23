@@ -4,7 +4,6 @@ An  C++ implementation of RAFT consensus algorithm based on horse-rpc
 horse-raft的节点之间采用腾讯开源的tars协议来进行rpc通讯，腾讯开源的[tarscpp](https://github.com/TarsCloud/TarsCpp)里有不少代码是tars框架内互调的代码， 
 
 如果完全搬来做raft比较冗余，因此基于tarscpp基础上阉割了不少代码，做了个简单版的rpc代码：[horse-rpc](https://github.com/hezhihua/horse-rpc)，horse-raft基于  
-
 [horse-rpc](https://github.com/hezhihua/horse-rpc) 做节点之间的rpc调用则可。    
 
 # 依赖环境
