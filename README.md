@@ -28,7 +28,7 @@ horse-raft的节点之间采用腾讯开源的tars协议来进行rpc通讯，腾
 
 
 # 二期   
-1,Snapshot and log compaction     
+1,timeoutNow,installSnapshot and log compaction     
 2,支持管理命令,http接口
 
 # 感谢
