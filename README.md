@@ -7,9 +7,7 @@ horse-raft的节点之间采用腾讯开源的tars协议来进行rpc通讯，<br
 
 如果完全搬来做raft比较冗余，因此基于tarscpp基础上阉割了不少代码，<br>
 
-做了个简单版的rpc：[horse-rpc](https://github.com/hezhihua/horse-rpc)，<br>
-
-horse-raft基于[horse-rpc](https://github.com/hezhihua/horse-rpc) 做节点之间的rpc调用则可。<br>    
+做了个简单版的rpc：[horse-rpc](https://github.com/hezhihua/horse-rpc)，horse-raft基于[horse-rpc](https://github.com/hezhihua/horse-rpc) 做节点之间的rpc调用则可。<br>    
 
 # 依赖环境
 | 软件	 | 要求 |
