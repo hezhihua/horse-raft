@@ -353,6 +353,9 @@ namespace horsedb {
         for (size_t i = 0; i < peers.size(); i++)
         {
             Communicator  *_comm=new Communicator();
+            //_comm->setProperty("sendqueuelimit", "1000000");
+	        //_comm->setProperty("asyncqueuecap", "1000000");
+	        //_comm->setProperty("netthread", TC_Common::tostr(1));
             auto pPrx= _comm->stringToProxy<RaftDBPrx>(raftObj+peers[i].desc());
             cout<<"raftObj+peers[i].desc()="<<raftObj+peers[i].desc()<<endl;
 
@@ -436,7 +439,7 @@ namespace horsedb {
         RaftState st = _log_manager->check_consistency();
         if (!st.ok()) 
         {
-            //日志index不是从1开始,有缺失了,退出程序?
+            //日志index不是从1开始,有缺失了,退出程序
             TLOGERROR_RAFT(  "node " << _group_id << ":" << _server_id
                     << " is initialized with inconsitency log: "+  st.msg()<<endl);
             return -1;
@@ -1615,7 +1618,7 @@ void NodeImpl::unsafe_apply_configuration(const Configuration& new_conf,
             RaftState status(ELEADERCONFLICT, "More than one leader in the same term."); 
             step_down(request.term + 1, false, status);
             response.isSuccess=false;
-            response.term= request.term + 1;//让leader 降为follwer ,大家进入下一次选举
+            response.term= request.term + 1;//让leader收到响应后 降为follwer ,大家进入下一次选举
             return -1;
         }
 
@@ -1634,6 +1637,7 @@ void NodeImpl::unsafe_apply_configuration(const Configuration& new_conf,
         const int64_t local_prev_log_term = _log_manager->get_term(prev_log_index);
         if (local_prev_log_term != prev_log_term) 
         {
+            //leader发过来的日志跟我本地的不一致
             int64_t last_index = _log_manager->last_log_index();
             //int64_t saved_term = request.term;
             //int     saved_entries_size = request.logEntries.size();
@@ -1641,7 +1645,7 @@ void NodeImpl::unsafe_apply_configuration(const Configuration& new_conf,
             
             response.isSuccess=false ;
             response.term= _current_term;
-            response.lastLogIndex =last_index;
+            response.lastLogIndex =last_index;//告诉leader我本地的日志最后的index
             
             TLOGWARN_RAFT( "node " << _group_id << ":" << _server_id
                         << " reject term_unmatched AppendEntries from " 
@@ -1671,6 +1675,7 @@ void NodeImpl::unsafe_apply_configuration(const Configuration& new_conf,
 
 
         auto logEntries =request.logEntries;
+        //follower接收到leader的日志后落地
         _log_manager->append_entries(logEntries);
 
         // update configuration after _log_manager updated its memory status
@@ -1689,6 +1694,7 @@ void NodeImpl::unsafe_apply_configuration(const Configuration& new_conf,
                          // indexes are less than request->committed_index()
                         );
         //_ballot_box is thread safe and tolerates disorder.
+        //日志落地后根据Leader的commitIndex要应用到状态机
         _ballot_box->set_last_committed_index(committed_index);
 
         return 0;

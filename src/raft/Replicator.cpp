@@ -470,6 +470,8 @@ namespace horsedb{
     }
 
     //发送本地数据
+    //就算请求数据丢失了,但因为有心跳检测
+    //也会在callback异步线程那里触发本线程将本地日志数据同步给远程follower
     void Replicator::sendEntries()
     {
 
@@ -514,6 +516,8 @@ namespace horsedb{
                     // both prev_log_index and prev_log_term be 0 in the heartbeat 
                     // request so that follower would do nothing besides updating its 
                     // leader timestamp.
+                    //prev_log_index 之前的日志已经被压缩,意味着leader可能正在给follower安装快照
+                    //follwer收到 prev_log_index和prev_log_term都为零后,只会更新leader的租约时间
                     prev_log_index = 0;
                 }
             }
@@ -524,7 +528,7 @@ namespace horsedb{
             tReq.serverID=_options.server_id.to_string();
             tReq.peerID=_options.peer_id.to_string();//发给谁
 
-            tReq.prevLogIndex=prev_log_index;//目前落地日志的最后一个日志的index
+            tReq.prevLogIndex=prev_log_index;//目前落地日志的最后一个日志的index 或者 follwer如果未追平则为follwer的最后一个日志index
             tReq.prevLogTerm=prev_log_term;//目前落地日志的最后一个日志的term
             tReq.commitIndex=_options.ballot_box->last_committed_index();
 
@@ -544,9 +548,10 @@ namespace horsedb{
 
             if (tReq.logEntries.size() == 0) 
             {
-                TLOGINFO_RAFT(  "tReq.logEntries.size()=0,no send"  <<endl);
+                TLOGINFO_RAFT(  "local data,logEntries.size()=0,no send"  <<endl);
                 if (_next_index < _options.log_manager->first_log_index()) 
                 {
+                    //todo 这种情况会发生?
                     TLOGINFO_RAFT(  "_next_index " << _next_index<< ", log_manager first_log_index=" << _options.log_manager->first_log_index() <<endl);
                     _reset_next_index();
                     return _install_snapshot();
@@ -565,6 +570,7 @@ namespace horsedb{
                 //本地数据已经追平了，不再发数据
                 return ;
             }
+
             //本地数据未追平则继续发
 
             _append_entries_in_fly.push_back(FlyingAppendEntriesRpc(_next_index,tReq.logEntries.size()));
@@ -628,7 +634,7 @@ namespace horsedb{
                 return;
             }
 
-            int64_t prev_log_index=_next_index-1;
+            int64_t prev_log_index=_next_index-1;//prev_log_index最后一个index日志
             const int64_t prev_log_term = _options.log_manager->get_term(prev_log_index);
             if (prev_log_term == 0 &&  prev_log_index!= 0) 
             {

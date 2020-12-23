@@ -1,5 +1,7 @@
 #include "kv/DBBase.h"
 #include <iostream>
+#include "util/tc_common.h"
+#include "logger/logger.h"
 using namespace std;
 
 namespace horsedb {
@@ -19,7 +21,7 @@ namespace horsedb {
         DB::ListColumnFamilies(_options,_dbPath,&vCFName);
         for (auto cf:vCFName)
         {
-            cout<<"cfname="<<cf<<endl;
+            TLOGDEBUG_RAFT("cfname="<<cf<<endl);
             column_families.push_back(ColumnFamilyDescriptor(cf, ColumnFamilyOptions(_options)));
         }
         if (column_families.empty())
@@ -30,12 +32,12 @@ namespace horsedb {
         
     
         Status s = DB::Open(_options, dbPath,column_families,&handles, &_db);
-        cout<<"status:"<<s.ToString()<<endl;
+        TLOGDEBUG_RAFT("db open status:"<<s.ToString()<<endl);
         assert(s.ok());
 
         for (size_t i = 0; i < handles.size(); i++)
         {
-            cout<<"handles name:"<<handles[i]->GetName()<<endl;
+            TLOGDEBUG_RAFT("handles name:"<<handles[i]->GetName()<<endl);
             _mhandles[handles[i]->GetName()]= handles[i]; 
 
         }
@@ -46,7 +48,7 @@ namespace horsedb {
             {
                 ColumnFamilyHandle* cf;
                 auto s = _db->CreateColumnFamily(ColumnFamilyOptions(_options), newcf, &cf);
-                cout<<"newcf:"<<newcf<<",status:"<<s.ToString()<<endl;
+                TLOGDEBUG_RAFT("newcf:"<<newcf<<",status:"<<s.ToString()<<endl);
                 assert(s.ok());   
 
                 _mhandles[newcf]= cf; 
@@ -88,7 +90,7 @@ namespace horsedb {
         {
             ColumnFamilyHandle* cf;
             auto s = _db->CreateColumnFamily(ColumnFamilyOptions(), dbname, &cf);
-            cout<<"CreateColumnFamily status:"<<s.ToString()<<endl;
+            TLOGDEBUG_RAFT("CreateColumnFamily status:"<<s.ToString()<<endl);
             assert(s.ok());   
 
             _mhandles[dbname]= cf;
@@ -104,7 +106,7 @@ namespace horsedb {
         bool bDBExist= _mhandles.find(dbname)!=_mhandles.end();
         if (!bDBExist)
         {
-            cout<<"DB not Exist,dbname="<<dbname<<endl;
+            TLOGDEBUG_RAFT("DB not Exist,dbname="<<dbname<<endl);
         }
         
         return bDBExist;
@@ -118,7 +120,7 @@ namespace horsedb {
             return false;
         }
         auto s = _db->Put(_WriteOptions, _mhandles[db], Slice(key), Slice(value));
-        cout<<"Put status:"<<s.ToString()<<endl;
+        TLOGDEBUG_RAFT("Put status:"<<s.ToString()<<endl);
 
         return s.ok();
 
@@ -130,7 +132,7 @@ namespace horsedb {
             return false;
         }
         auto s = updates.Put(_mhandles[db], Slice(key), Slice(value));
-        cout<<"Put status:"<<s.ToString()<<endl;
+        TLOGDEBUG_RAFT("Put status:"<<s.ToString()<<endl);
 
         return s.ok();
 
@@ -143,7 +145,7 @@ namespace horsedb {
             return false;
         }
         auto s = _db->Write(_WriteOptions,  &updates);
-        cout<<"Write status:"<<s.ToString()<<endl;
+        TLOGDEBUG_RAFT("Write status:"<<s.ToString()<<endl);
 
         return s.ok();
 
@@ -158,7 +160,7 @@ namespace horsedb {
             return false;
         }
         auto s = _db->Get(_readOptions, _mhandles[db], Slice(key), &value);
-        cout<<"Get status:"<<s.ToString()<<",key:" << key<<",value:"<<value<<endl;
+        TLOGDEBUG_RAFT("Get status:"<<s.ToString()<<",key:" << key<<endl);
          return s.ok();
 
     }
@@ -172,7 +174,7 @@ namespace horsedb {
         }
 
         tStatus = _db->Get(_readOptions, _mhandles[db], Slice(key), &value);
-        cout<<"Get status:"<<tStatus.ToString()<<",key:" << key<<",value:"<<value<<endl;
+        TLOGDEBUG_RAFT("Get status:"<<tStatus.ToString()<<",key:" << key<<endl);
         return tStatus;
 
     }
@@ -185,7 +187,7 @@ namespace horsedb {
             return false;
         }
         bool isExist= _db->KeyMayExist(_readOptions, _mhandles[db], Slice(key), &value);
-        cout<<"key:" << key<<",isExist:"<<isExist<<",value:"<<value<<endl;
+        TLOGDEBUG_RAFT("key:" << key<<",isExist:"<<isExist<<endl);
         return isExist;
 
     }
@@ -196,13 +198,13 @@ namespace horsedb {
         {
             return false;
         }
-         cout << " dbname:" << dbname<<endl;
+        TLOGDEBUG_RAFT( " dbname:" << dbname<<endl);
 
         std::unique_ptr<Iterator> iter(_db->NewIterator(_readOptions,_mhandles[dbname]));
         Status st = iter->status();
         if (!st.ok()) 
         {
-            cout<<"Iterator error." << st.ToString()<<endl;
+            TLOGERROR_RAFT("Iterator error." << st.ToString()<<endl);
             return false;
         }
 
@@ -224,13 +226,13 @@ namespace horsedb {
         {
             return false;
         }
-         cout << " dbname:" << dbname<<endl;
+        TLOGDEBUG_RAFT(" dbname:" << dbname<<endl);
 
         std::unique_ptr<Iterator> iter(_db->NewIterator(_readOptions,_mhandles[dbname]));
         Status st = iter->status();
         if (!st.ok()) 
         {
-            cout<<"Iterator error." << st.ToString()<<endl;
+            TLOGERROR_RAFT("Iterator error." << st.ToString()<<endl);
             return false;
         }
 
@@ -265,7 +267,7 @@ namespace horsedb {
         {
             return false;
         }
-         cout <<" prekey:" << prekey<< ", dbname:" << dbname<<endl;
+        TLOGDEBUG_RAFT(" prekey:" << prekey<< ", dbname:" << dbname<<endl);
          _readOptions.total_order_seek = true;
         //  uint64_t count=0;
         //  _db->GetIntProperty(_mhandles[dbname], "rocksdb.estimate-num-keys",&count) ;
@@ -275,7 +277,7 @@ namespace horsedb {
         Status st = iter->status();
         if (!st.ok()) 
         {
-            cout<<"Iterator error." << st.ToString()<<endl;
+            TLOGERROR_RAFT("Iterator error." << st.ToString()<<endl);
             return false;
         }
         // std::string stats;
@@ -307,7 +309,7 @@ namespace horsedb {
         {
             return false;
         }
-         cout <<" prekey:" << prekey<< ", dbname:" << dbname<<endl;
+        TLOGDEBUG_RAFT(" prekey:" << prekey<< ", dbname:" << dbname<<endl);
          _readOptions.total_order_seek = true;
         //  uint64_t count=0;
         //  _db->GetIntProperty(_mhandles[dbname], "rocksdb.estimate-num-keys",&count) ;
@@ -317,7 +319,7 @@ namespace horsedb {
         Status st = iter->status();
         if (!st.ok()) 
         {
-            cout<<"Iterator error." << st.ToString()<<endl;
+            TLOGDEBUG_RAFT("Iterator error." << st.ToString()<<endl);
             return false;
         }
         // std::string stats;

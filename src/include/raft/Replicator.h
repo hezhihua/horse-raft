@@ -185,7 +185,7 @@ public:
 
     RaftDBPrx _raftDBPrx;
 
-    int64_t _next_index;
+    int64_t _next_index;//最后一个日志index+1，即下一个要发的日志index
     bool _is_waiter_canceled;
 
     ReplicatorOptions _options;

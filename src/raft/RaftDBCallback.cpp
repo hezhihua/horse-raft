@@ -79,17 +79,21 @@ namespace horsedb {
                     
                     // prev_log_index and prev_log_term doesn't match
                     replicator->_reset_next_index();
+                    
                     if (tRes.lastLogIndex + 1 < replicator->_next_index) 
                     {
+                        //远程follower还没有追平leader日志
                         TLOGWARN_RAFT(  "Group " << replicator->_options.group_id
                                 << " last_log_index at peer=" << replicator->_options.peer_id 
                                 << " is " << tRes.lastLogIndex <<endl);
                         // The peer contains less logs than leader
                         //replicator->_next_index 初始化的时候初始为leader落地日志最后一个Index+1
+                        //下一个要发送的日志index为follwer本地最后一个日志+1
                         replicator->_next_index = tRes.lastLogIndex + 1;
                     } 
                     else 
                     {  
+                        //远程follower比leader日志多
                         // The peer contains logs from old term which should be truncated,
                         // decrease _last_log_at_peer by one to test the right index to keep
                         if (replicator->_next_index > 1) 
@@ -107,8 +111,9 @@ namespace horsedb {
                         }
                     }
 
-                    //todo 通知replicator,马上再发送请求检测是否对得上follower的index
-                    //对得上,follwer返回true
+                    // 调整replicator->_next_index后通知replicator,马上再发送心跳请求检测是否对得上follower的index
+                    //follower收到响应后检测,如果自己本地的日志index和leader对得上,follwer返回tRes.isSuccess 为true,
+                    //流程不会再进入到这里
                     ReplicLogTask tReplicLogTask;
                     tReplicLogTask._ReplicType=REPLIC_EMPTY;
                     replicator->push_back(tReplicLogTask);
@@ -119,9 +124,8 @@ namespace horsedb {
                     return;
             }
 
+            //到这里follower和leader的index对得上了
             TLOGINFO_RAFT( " success"<<endl);
-
-            
             
             if (tRes.term != replicator->_options.term) 
             {
@@ -164,7 +168,7 @@ namespace horsedb {
                 replicator->_send_timeout_now();
             }
 
-            // 通知 replicator线程继续发送数据
+            // 通知 replicator线程继续发送本地数据
             ReplicLogTask tReplicLogTask;
             tReplicLogTask._ReplicType=REPLIC_DATA;
             replicator->push_back(tReplicLogTask);
