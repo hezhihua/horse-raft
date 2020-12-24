@@ -29,7 +29,7 @@ horse-raft的节点之间采用腾讯开源的tars协议来进行rpc通讯，<br
 2,cd horse-raft && mkdir build && cd build && cmake ..  && make 
 
 # 用法  
-请参考我另外一个开源项目[horsedb](https://github.com/hezhihua/horsedb)   
+请参考我另外一个开源项目[horsedb](https://github.com/hezhihua/horsedb),horsedb是基于horse-raft做的kv存储   
 
 # 二期   
 1,timeoutNow,installSnapshot and log compaction     
